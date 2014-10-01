@@ -35,14 +35,14 @@
 
 \IEEEtitleabstractindextext{%
 \begin{abstract}
-Our goal is to develop a multicast system capable of sending packets in agreed order utilizing the UDP/IP protocol.  In order to accomplish this task, we will implement a ring protocol where a token is passed in order to establish the control of sending packets.  A node will only be able to send packets when the node is in possession of the token.  
+Our goal is to develop a multicast system capable of reliably sending packets in agreed order utilizing the UDP/IP protocol.  In order to accomplish this task, we will implement a ring protocol where a token is passed in order to establish the control of sending packets.  A node will only be able to send packets when the node is in possession of the token.  
 \end{abstract}
 }
 \maketitle
 
 \section{Introduction}
 
-\IEEEPARstart{T}{his} multicast ring protocol works by utilizing a token to control the flow of packets multicasted to all processes.  The general idea is that once the processes are initiated, the first process (machine\_id = 1) will generate the first token.  If that machine has data to send, it will send data up to the maximum flow control value (pre defined).  Once it has sent the data, it will send the token to the group with the process id set to the next receiving process.  The next process then checks the min(token.aru, previous token.aru) and writes all the data it has up to that aru from the data structure to the file. It looks at the rtr and resends any packets that it has. Finally, it sends the packets it needs to send, updates the token sequence number, rtr, and sends the token to the next process. So the cycle repeats.
+\IEEEPARstart{T}{his} multicast ring protocol works by utilizing a token to control the flow of packets multicasted to all processes.  The general idea is that once the processes are initiated, the first process (machine\_id = 1) will generate the first token.  If that machine has data to send, it will send data up to the maximum flow control value (pre defined).  Once it has sent the data, it will send the token to the group with the process id set to the next receiving process.  The next process then checks the min(token.aru, previous token.aru) and writes all the data it has up to that aru from the data structure to the file. It looks at the rtr and resends any packets that it has. Finally, it sends the packets it needs to send, updates the token sequence number, rtr, and sends the token to the next process. So the cycle repeats.  Due to the potential for loss over UDP, this protocol has an additional field on the token called loss\_level.  In an environment where loss could be large, the token protocol will have an issue due to token loss.  This protocol will attempt to overcome that problem by detecting when a token is lost, and not only regenerating the token, but increasing the reliability of the token by sending it multiple times.  As loss increases, the number of times the token will be sent by each node will also increase.
 
 \section{Design}
 
@@ -63,6 +63,7 @@ int aru;//Sequence of all rcv up to
 int fcc;//Flow control/Max send size
 int rtr[fcc];//Array of Retransmit requests
 int rcv_process_id;//Receiving process id
+int loss_level; //Increases on token regeneration
 \end{lstlisting}
 
 \subsection{Data Structure}
@@ -193,6 +194,12 @@ function send_rtr_packets
 		(initializers *i, struct token *t)
    sends packets needed to be 
    	retransmitted from token rtr
+   	
+function generate_packet 
+		(initializers *i)
+	Generates the next packet, and
+	  increases packet_index
+		
  
 \end{verbatim}
 
