@@ -2,45 +2,6 @@
 /* It utilizes a ring in order to provide agreed reliable delivery */
 
 #include "net_include.h"
-#define FCC 200
-#define PACKET_SIZE 1200
-
-/* Initializer variables */
-struct initializers {
-	struct packet_structure *head;
-	struct packet_structure *tail;
-	FILE *logfile;
-	int packets_to_send;
-	int machine_index;
-	int packet_index;
-	int total_machines;
-	int loss_rate;
-	int token_timeout;
-	int prior_token_aru;
-};
-
-struct packet_structure {
-	int token_sequence;
-	int received;
-	int machine_index;
-	int packet_index;
-	int random_number;
-	char data[PACKET_SIZE];
-	struct packet_structure *next;
-};
-
-struct token_structure {
-  int sequence;
-  int aru;
-  int fcc;
-  int rtr[FCC];
-  int rcv_process_id;
-  int loss_level;
-};
-/* Variables */
-struct initializers *i;
-struct token_structure *t;
-struct packet_structure *p;
 
 struct token_structure token_generate() {
   struct token_structure t;
@@ -54,7 +15,6 @@ void update_token(struct token_structure *t, int sequence) {
 int write_log(struct initializers *i) {
   /*writes to log for all received data */
 }
-
 
 void update_rtr(struct initializers *i){
   /*Writes rtr to token based on missing packets */
@@ -99,7 +59,11 @@ int parseargs(int argc, char **argv, struct initializers *i)
 }
 int main(int argc, char **argv)
 {
+	/* Variables */
+	struct initializers *i=malloc(sizeof(struct initializers));
+	struct token_structure *t=malloc(sizeof(struct token_structure));
+	struct packet_structure *p=malloc(sizeof(struct packet_structure));
   parseargs(argc, argv, i);
 
-
+  return (0);
 }
