@@ -9,13 +9,13 @@
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <netdb.h>
-
+#include <sys/time.h>
 #include <errno.h>
 
 /*#define PORT	     5855*/
-#define PORT	     11011
-#define FCC 200
-#define PACKET_SIZE 1200
+#define PORT	       11011
+#define FCC          200
+#define PACKET_SIZE  1200
 #define MAX_MESS_LEN 8192
 
 /* Initializer variables */
@@ -49,4 +49,13 @@ struct initializers {
   int loss_rate;
   int token_timeout;
   int prior_token_aru;
+  struct sockaddr_in name;
+  struct sockaddr_in send_addr;
+  int                mcast_addr;
+  struct ip_mreq     mreq;
+  unsigned char      ttl_val;
+  int                ss,sr;
+  fd_set             mask;
+  fd_set             dummy_mask,temp_mask;
+
 };
