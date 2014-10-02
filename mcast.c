@@ -36,8 +36,18 @@ void send_rtr_packets(struct initializers *i, struct token_structure *t){
   /* sends packets needed to be retransmitted from token rtr */
 }
 
-void generate_packet(struct initializers *i){
+struct packet_structure generate_packet(struct initializers *i, struct token_structure *t){
   /* Generates the next packet, and */
+  int r = rand() % 1000000 + 1;
+  struct packet_structure *p=malloc(sizeof(struct packet_structure));
+  t->sequence++; /* Increase the token sequence number */
+  p->token_sequence = t->sequence;
+  i->packet_index++; /*Increase the packet sequence number */
+  p->packet_index = i->packet_index;
+  p->received=0; /* Packet sent is set to 0, so receiving machine can update */
+  p->machine_index = i->machine_index;
+  p->random_number=r;
+  return *p;
 }
 
 int parseargs(int argc, char **argv, struct initializers *i)
@@ -64,6 +74,10 @@ int main(int argc, char **argv)
 	struct token_structure *t=malloc(sizeof(struct token_structure));
 	struct packet_structure *p=malloc(sizeof(struct packet_structure));
   parseargs(argc, argv, i);
+  struct timeval ti;
+	gettimeofday( &ti, NULL );
+	srand( ti.tv_sec );
+  i->packet_index = 0;
 
   return (0);
 }
