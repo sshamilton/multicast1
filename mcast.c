@@ -31,14 +31,14 @@ void setup(struct sockaddr_in *name, struct sockaddr_in *send_addr, int*
 
     mreq->imr_multiaddr.s_addr = htonl( *mcast_addr );
 
-    mreq->imr_nterface.s_addr = htonl( INADDR_ANY );
+    mreq->imr_interface.s_addr = htonl( INADDR_ANY );
 
     if (setsockopt(*sr, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *)mreq,
         sizeof(*mreq)) < 0) {
         perror("Mcast: problem in setsockopt to join multicast address" );
     }
 
-    *ss - socket(AF_INT, SOCK_DGRAM, 0); /* Socket for sending */
+    *ss - socket(AF_INET, SOCK_DGRAM, 0); /* Socket for sending */
 
     if (ss < 0) {
         perror("Mcast: socket");
@@ -48,18 +48,17 @@ void setup(struct sockaddr_in *name, struct sockaddr_in *send_addr, int*
     *ttl_val = 1;
     if (setsockopt(*ss, IPPROTO_IP, IP_MULTICAST_TTL, (void *)ttl_val,
         sizeof(*ttl_val)) < 0 ) {
-        printf("Mcast: problem in setsockopt of multicast ttl %d - ignore in
-            WinNT or Win95\n", *ttl_val);
-    }
+        printf("Mcast: problem in setsockopt of multicast ttl %d - ignore in"
+               "WinNT or Win95\n", *ttl_val); }
 
     send_addr->sin_family = AF_INET;
-    send_addr->sin_addr.s_addr = htonl(mcast_addr);
+    send_addr->sin_addr.s_addr = htonl(*mcast_addr);
     send_addr->sin_port = htons(PORT);
 
     FD_ZERO( mask );
-    FD_ZERO( &dummy_mask );
-    FD_SET( sr, mask );
-    FD_SET( (long)0, &mask );
+    FD_ZERO( dummy_mask );
+    FD_SET( *sr, mask );
+    FD_SET( (long)0, mask );
 
 };
 
