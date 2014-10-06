@@ -8,57 +8,58 @@ struct token_structure token_generate() {
   return t;
 };
 
-void setup(struct sockaddr_in *name, struct sockaddr_in *send_addr, int*
-            mcast_addr, struct ip_mreq *mreq, unsigned char *ttl_val, int *ss,
-            int *sr, fd_set *mask, fd_set *dummy_mask, fd_set *temp_mask) {
+void setup(struct initializers *i) {
   /* waits for the start_mcast message to start the actual process */
-    *mcast_addr = 225 << 24 | 0 << 16 | 1 << 8 | 1; // Will be changed later
+     int                mcast_addr;
 
-    *sr = socket(AF_INET, SOCK_DGRAM, 0); /* Socket for receiving */
-    if (*sr < 0) {
+    struct ip_mreq     mreq;
+    unsigned char      ttl_val;
+    mcast_addr = 225 << 24 | 0 << 16 | 1 << 8 | 1; // Will be changed later
+    i->sr = socket(AF_INET, SOCK_DGRAM, 0); /* Socket for receiving */
+    if (i->sr < 0) {
         perror("Mcast: socket");
         exit(1);
     }
 
-    name->sin_family = AF_INET;
-    name->sin_addr.s_addr = INADDR_ANY;
-    name->sin_port = htons(PORT);
+    i->name.sin_family = AF_INET;
+    i->name.sin_addr.s_addr = INADDR_ANY;
+    i->name.sin_port = htons(PORT);
 
-    if (bind( *sr, (struct sockaddr *) name, sizeof(*name) ) < 0) {
+    if (bind( i->sr, (struct sockaddr *) &i->name, sizeof(i->name) ) < 0) {
         perror("Mcast: bind");
         exit(1);
     }
 
-    mreq->imr_multiaddr.s_addr = htonl( *mcast_addr );
+    mreq.imr_multiaddr.s_addr = htonl( mcast_addr );
 
-    mreq->imr_interface.s_addr = htonl( INADDR_ANY );
+    mreq.imr_interface.s_addr = htonl( INADDR_ANY );
 
-    if (setsockopt(*sr, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *)mreq,
-        sizeof(*mreq)) < 0) {
+    if (setsockopt(i->sr, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void *)&mreq,
+        sizeof(mreq)) < 0) {
         perror("Mcast: problem in setsockopt to join multicast address" );
     }
 
-    *ss - socket(AF_INET, SOCK_DGRAM, 0); /* Socket for sending */
+    i->ss - socket(AF_INET, SOCK_DGRAM, 0); /* Socket for sending */
 
-    if (ss < 0) {
+    if (i->ss < 0) {
         perror("Mcast: socket");
         exit(1);
     }
 
-    *ttl_val = 1;
-    if (setsockopt(*ss, IPPROTO_IP, IP_MULTICAST_TTL, (void *)ttl_val,
-        sizeof(*ttl_val)) < 0 ) {
+    ttl_val = 1;
+    if (setsockopt(i->ss, IPPROTO_IP, IP_MULTICAST_TTL, (void *)&ttl_val,
+        sizeof(ttl_val)) < 0 ) {
         printf("Mcast: problem in setsockopt of multicast ttl %d - ignore in"
-               "WinNT or Win95\n", *ttl_val); }
+               "WinNT or Win95\n", ttl_val); }
 
-    send_addr->sin_family = AF_INET;
-    send_addr->sin_addr.s_addr = htonl(*mcast_addr);
-    send_addr->sin_port = htons(PORT);
+    i->send_addr.sin_family = AF_INET;
+    i->send_addr.sin_addr.s_addr = htonl(mcast_addr);
+    i->send_addr.sin_port = htons(PORT);
 
-    FD_ZERO( mask );
-    FD_ZERO( dummy_mask );
-    FD_SET( *sr, mask );
-    FD_SET( (long)0, mask );
+    FD_ZERO( &i->mask );
+    FD_ZERO( &i->dummy_mask );
+    FD_SET( i->sr, &i->mask );
+    FD_SET( (long)0, &i->mask );
 
 };
 
@@ -136,9 +137,6 @@ int main(int argc, char **argv)
     fd_set             mask;
     fd_set             dummy_mask,temp_mask;
 
-    setup(&name, &send_addr, &mcast_addr, &mreq, &ttl_val, &ss, &sr, &mask,
-            &dummy_mask, &temp_mask);
-
 	struct initializers *i=malloc(sizeof(struct initializers));
 	struct token_structure *t=malloc(sizeof(struct token_structure));
 	struct packet_structure *p=malloc(sizeof(struct packet_structure));
@@ -147,6 +145,7 @@ int main(int argc, char **argv)
 	gettimeofday( &ti, NULL );
 	srand( ti.tv_sec );
   i->packet_index = 0;
+  setup(i);
 
   return (0);
 }
