@@ -74,9 +74,38 @@ int write_log(struct initializers *i) {
 void update_rtr(struct initializers *i){
   /*Writes rtr to token based on missing packets */
 }
-
+struct packet_structure *generate_packet(struct initializers *i, struct token_structure *t){
+  /* Generates the next packet, and */
+  int r = rand() % 1000000 + 1;
+  struct packet_structure *p=malloc(sizeof(struct packet_structure));
+  t->sequence++; /* Increase the token sequence number */
+  p->token_sequence = t->sequence;
+  i->packet_index++; /*Increase the packet sequence number */
+  p->packet_index = i->packet_index;
+  p->received=0; /* Packet sent is set to 0, so receiving machine can update */
+  p->machine_index = i->machine_index;
+  p->random_number=r;
+  return p;
+}
 void send_data(struct initializers *i, struct token_structure *t){
   /*sends data up to fcc*/
+  struct packet_structure *packet;
+  int p;
+  int psend; /*Number of packets we are sending send */
+  if (i->packets_to_send > 0) {
+    if (i->packets_to_send > t->fcc){
+      psend = t->fcc; /*We have max fcc packets */
+    }
+    else {
+      psend = i->packets_to_send; /*we are getting to the end of our packets, send the rest */
+    }
+    for (p=1; p<=psend; p++) {
+      packet = generate_packet(i, t);
+      sendto(i->ss, packet, sizeof(packet), 0,
+        (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
+      i->packets_to_send--; /* Decrement the packets to send */
+    }
+  }
 }
 
 void send_token(struct token_structure *t){
@@ -89,20 +118,6 @@ void add_packet(struct initializers *i,struct packet_structure *p){
 
 void send_rtr_packets(struct initializers *i, struct token_structure *t){
   /* sends packets needed to be retransmitted from token rtr */
-}
-
-struct packet_structure generate_packet(struct initializers *i, struct token_structure *t){
-  /* Generates the next packet, and */
-  int r = rand() % 1000000 + 1;
-  struct packet_structure *p=malloc(sizeof(struct packet_structure));
-  t->sequence++; /* Increase the token sequence number */
-  p->token_sequence = t->sequence;
-  i->packet_index++; /*Increase the packet sequence number */
-  p->packet_index = i->packet_index;
-  p->received=0; /* Packet sent is set to 0, so receiving machine can update */
-  p->machine_index = i->machine_index;
-  p->random_number=r;
-  return *p;
 }
 
 int parseargs(int argc, char **argv, struct initializers *i)
@@ -140,12 +155,16 @@ int main(int argc, char **argv)
 	struct initializers *i=malloc(sizeof(struct initializers));
 	struct token_structure *t=malloc(sizeof(struct token_structure));
 	struct packet_structure *p=malloc(sizeof(struct packet_structure));
+  t->fcc = FCC;
   parseargs(argc, argv, i);
   struct timeval ti;
 	gettimeofday( &ti, NULL );
 	srand( ti.tv_sec );
   i->packet_index = 0;
   setup(i);
-
+  if (i->machine_index == 1) {
+    send_data(i, t); /*Send data is going to update the token too*/
+    send_token(t);
+  }
   return (0);
 }
