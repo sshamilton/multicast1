@@ -20,6 +20,7 @@
 
 /* Initializer variables */
 struct packet_structure {
+  int type;
   int sequence;
   int received;
   int machine_index;
@@ -30,6 +31,7 @@ struct packet_structure {
 };
 
 struct token_structure {
+  int type;
   int sequence;
   int aru;
   int fcc;

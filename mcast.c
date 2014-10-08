@@ -12,9 +12,8 @@ void setup(struct initializers *i) {
   /* Sets up all ports */
   /* and waits for the start_mcast message to start the actual process */
    int              mcast_addr;
-   int              next_machine_ip =0;
+   int              start = 0;
    int              bytes;
-   int              sender_id;
    int              num;
    socklen_t        from_len;
    fd_set           dummy_mask,temp_mask;
@@ -69,28 +68,10 @@ void setup(struct initializers *i) {
     FD_ZERO(&mask);
     FD_ZERO(&dummy_mask);
     FD_SET(i->sr, &mask);
-
-    /* Now we need to send our machine info out periodically, and wait to find our neighbor */
-
-    /* Calculate our neighbor */
-    if (i->machine_index == i->total_machines) {
-      /*We are largest, so our neighbor is first machine */
-      i->next_machine =1;
-    }
-    else{
-      i->next_machine = i->machine_index + 1;
-    }
-
-    /* Send out hello packet and wait for neighbor's hello */
-    if (i->debug) printf("Sending hello to group\n");
-    i-> mess_buf[0] = i->machine_index;
-    sendto( i->ss, i->mess_buf, sizeof(i->machine_index), 0,
-            (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
-            printf("sent\n");
-    temp_mask = mask;
-    while (next_machine_ip == 0) {
+    while (start == 0) {
       timeout.tv_sec = 5;
-      timeout.tv_usec = 2000;
+      timeout.tv_usec = 0;
+      temp_mask = mask;
       num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
       if (num > 0){
         printf("Rcv\n");
@@ -102,19 +83,64 @@ void setup(struct initializers *i) {
                         the sockaddr called this for reuse purposes */
                 i->mess_buf[bytes] = 0;
                 printf( "received : %d\n", i->mess_buf[0] );
-        /* Check to see if this is our neighbor */
-            sender_id = i->mess_buf[0];
-            if (i->next_machine == sender_id)
-              {
-                if (i->debug) printf("Found our neighbor %d", sender_id);
-                next_machine_ip = i->next_machine_addr.sin_addr.s_addr;
-              }
+                start = i->mess_buf[0];
+
         }
+
       }
+      else {printf("No start sig\n");}
     }
 
 };
-
+void get_neighbor(struct initializers *i){
+  fd_set  dummy_mask,temp_mask;
+  struct	timeval timeout;
+  fd_set  mask;
+  int     next_machine_ip =0;
+  int     num,bytes,sender_id;
+  socklen_t        from_len;
+  temp_mask = mask;
+  /* Calculate our neighbor */
+  if (i->machine_index == i->total_machines) {
+    /*We are largest, so our neighbor is first machine */
+    i->next_machine =1;
+  }
+  else{
+    i->next_machine = i->machine_index + 1;
+  }
+  while (next_machine_ip == 0) {
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 2000;
+    num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
+    if (num > 0){
+      printf("Rcv\n");
+      if ( FD_ISSET( i->sr, &temp_mask) ) {
+              bytes = recvfrom( i->sr, i->mess_buf, sizeof(i->mess_buf), 0,
+                                (struct sockaddr *)&i->next_machine_addr,
+                                &from_len );
+              /* Note: This may not be the next machine, but we are using
+                      the sockaddr called this for reuse purposes */
+              i->mess_buf[bytes] = 0;
+              printf( "received : %d\n", i->mess_buf[0] );
+      /* Check to see if this is our neighbor */
+          sender_id = i->mess_buf[0];
+          if (i->next_machine == sender_id)
+            {
+              if (i->debug) printf("Found our neighbor %d", sender_id);
+              next_machine_ip = i->next_machine_addr.sin_addr.s_addr;
+            }
+      }
+    }
+  }
+}
+void send_id(struct initializers *i)
+{
+  if (i->debug) printf("Sending hello to group\n");
+  i-> mess_buf[0] = i->machine_index;
+  sendto( i->ss, i->mess_buf, sizeof(i->machine_index), 0,
+          (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
+          printf("sent\n");
+}
 void update_token(struct token_structure *t, int sequence) {
   /* updates the token with sequence number */
 }
