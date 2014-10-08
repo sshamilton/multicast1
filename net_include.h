@@ -12,15 +12,14 @@
 #include <sys/time.h>
 #include <errno.h>
 
-/*#define PORT	     5855*/
-#define PORT	       11011
+#define PORT	       10080 /* assigned address */
 #define FCC          200
 #define PACKET_SIZE  1200
 #define MAX_MESS_LEN 8192
 
 /* Initializer variables */
 struct packet_structure {
-  int token_sequence;
+  int sequence;
   int received;
   int machine_index;
   int packet_index;
@@ -46,16 +45,15 @@ struct initializers {
   int machine_index;
   int packet_index;
   int total_machines;
+  int next_machine;
   int loss_rate;
+  int debug;
   int token_timeout;
   int prior_token_aru;
+  char  mess_buf[MAX_MESS_LEN];
   struct sockaddr_in name;
   struct sockaddr_in send_addr;
-  int                mcast_addr;
-  struct ip_mreq     mreq;
-  unsigned char      ttl_val;
-  int                ss,sr;
-  fd_set             mask;
-  fd_set             dummy_mask,temp_mask;
+  struct sockaddr_in next_machine_addr;
+  int                ss,sr, ts; /*token send socket added */
 
 };
