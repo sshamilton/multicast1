@@ -53,10 +53,11 @@ struct initializers {
   int debug;
   int token_timeout;
   int prior_token_aru;
-  char  mess_buf[MAX_MESS_LEN];
+  char mess_buf[MAX_MESS_LEN];
   struct sockaddr_in name;
   struct sockaddr_in send_addr;
   struct sockaddr_in next_machine_addr;
-  int ss,sr, ts; /*token send socket added */
+  int ss, sr, ts; /*token send socket added */
+  /* Array of unwritten packets */
   struct packet_structure* unwritten_packets[ARRAY_SIZE];
 };
