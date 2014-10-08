@@ -203,6 +203,7 @@ int main(int argc, char **argv)
     int                ss,sr;
     fd_set             mask;
     fd_set             dummy_mask,temp_mask;
+    
 
 	struct initializers *i=malloc(sizeof(struct initializers));
 	struct token_structure *t=malloc(sizeof(struct token_structure));
