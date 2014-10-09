@@ -3,6 +3,7 @@
 
 #include "net_include.h"
 #include "unistd.h"
+
 struct token_structure token_generate() {
   struct token_structure t;
   return t;
