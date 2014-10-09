@@ -94,7 +94,7 @@ void setup(struct initializers *i) {
 };
 void get_neighbor(struct initializers *i){
   fd_set  dummy_mask,temp_mask;
-  struct	timeval timeout, start_time, end_time;
+  struct	timeval timeout;
   fd_set  mask;
   int     next_machine_ip =0;
   int     num,bytes,sender_id;
@@ -167,12 +167,16 @@ void update_token(struct token_structure *t, int sequence) {
 }
 
 int write_log(struct initializers *i) {
-  /*writes to log for all received data */
+  /* writes to log for all received data
+   * When implementing make sure to free the pointer in the unwritten_packets
+   * array and then set that pointer to null.
+   */
 }
 
 void update_rtr(struct initializers *i){
   /*Writes rtr to token based on missing packets */
 }
+
 struct packet_structure *generate_packet(struct initializers *i, struct token_structure *t){
   /* Generates the next packet, and */
   int r = rand() % 1000000 + 1;
@@ -184,8 +188,11 @@ struct packet_structure *generate_packet(struct initializers *i, struct token_st
   p->received=0; /* Packet sent is set to 0, so receiving machine can update */
   p->machine_index = i->machine_index;
   p->random_number=r;
+  /* Stores the newly generated packet into the unwritten array */
+  i->unwritten_packets[p->sequence % ARRAY_SIZE] = p;
   return p;
 }
+
 void send_data(struct initializers *i, struct token_structure *t){
   /*sends data up to fcc*/
   struct packet_structure *packet;
@@ -200,19 +207,27 @@ void send_data(struct initializers *i, struct token_structure *t){
     }
     for (p=1; p<=psend; p++) {
       packet = generate_packet(i, t);
-      sendto(i->ss, packet, sizeof(packet), 0,
+      sendto(i->ss, packet, sizeof(struct packet_structure), 0,
         (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
       i->packets_to_send--; /* Decrement the packets to send */
     }
   }
 }
 
-void send_token(struct initializers *i,struct token_structure *t){
+void send_token(struct initializers *i,struct token_structure *t) {
   /*sends the current token to the next process (unicast)*/
+  sendto( i->ts, t, sizeof(struct token_structure), 0,
+          (struct sockaddr *)&i->next_machine_addr, sizeof(i->next_machine_addr));
 }
 
-void add_packet(struct initializers *i,struct packet_structure *p){
-  /*adds an incoming packet to the data structure.*/
+void add_packet(struct initializers *i, struct packet_structure *p){
+  /* 
+   * Adds an incoming packet to the data structure by mallocing the appropriate
+   * space and then memcpying the incoming data into the newly allocated space.
+   */
+  i->unwritten_packets[p->sequence % ARRAY_SIZE] = malloc(sizeof(struct packet_structure));
+  memcpy(i->unwritten_packets[p->sequence % ARRAY_SIZE], p,
+         sizeof(struct packet_structure));
 }
 
 void send_rtr_packets(struct initializers *i, struct token_structure *t){
@@ -246,10 +261,13 @@ int main(int argc, char **argv)
 	/* Variables */
     struct sockaddr_in name;
     struct sockaddr_in send_addr;
+
     int                mcast_addr;
+
     struct ip_mreq     mreq;
     unsigned char      ttl_val;
-    int                ss,sr, num, bytes;
+
+    int                ss,sr;
     fd_set             mask;
     fd_set             dummy_mask,temp_mask;
     struct timeval    timeout;

@@ -12,10 +12,11 @@
 #include <sys/time.h>
 #include <errno.h>
 
-#define PORT	       10080 /* assigned address */
+#define PORT	     10080 /* assigned address */
 #define FCC          200
 #define PACKET_SIZE  1200
 #define MAX_MESS_LEN 8192
+#define ARRAY_SIZE   1024
 
 /* Initializer variables */
 struct packet_structure {
@@ -40,8 +41,8 @@ struct token_structure {
 };
 
 struct initializers {
-  struct packet_structure *head;
-  struct packet_structure *tail;
+  /* Sequence value of the most recent packet written to log */
+  int written_seq;
   FILE *logfile;
   int packets_to_send;
   int machine_index;
@@ -52,10 +53,11 @@ struct initializers {
   int debug;
   int token_timeout;
   int prior_token_aru;
-  char  mess_buf[MAX_MESS_LEN];
+  char mess_buf[MAX_MESS_LEN];
   struct sockaddr_in name;
   struct sockaddr_in send_addr;
   struct sockaddr_in next_machine_addr;
-  int                ss,sr, ts; /*token send socket added */
-
+  int ss, sr, ts; /*token send socket added */
+  /* Array of unwritten packets */
+  struct packet_structure* unwritten_packets[ARRAY_SIZE];
 };
