@@ -94,12 +94,14 @@ void setup(struct initializers *i) {
 };
 void get_neighbor(struct initializers *i){
   fd_set  dummy_mask,temp_mask;
-  struct	timeval timeout;
+  struct	timeval timeout, start_time, end_time;
   fd_set  mask;
   int     next_machine_ip =0;
   int     num,bytes,sender_id;
   socklen_t        from_len;
-  temp_mask = mask;
+  gettimeofday(&start_time, NULL);
+  double t1, t2;
+  t1=start_time.tv_sec+(start_time.tv_usec/1000000.0);
   /* Calculate our neighbor */
   if (i->machine_index == i->total_machines) {
     /*We are largest, so our neighbor is first machine */
@@ -111,6 +113,17 @@ void get_neighbor(struct initializers *i){
   while (next_machine_ip == 0) {
     timeout.tv_sec = 5;
     timeout.tv_usec = 2000;
+    temp_mask = mask;
+    gettimeofday(&end_time, NULL);
+    t2=end_time.tv_sec+(start_time.tv_usec/1000000.0);
+    if (t1 < (t2-1)) {
+      i-> mess_buf[0] = 3; /*Timed out.  Requesting machine ids*/
+      if (i->debug) printf("Timed out requesting machine id\n");
+      i-> mess_buf[1] = i->machine_index;
+      sendto( i->ss, i->mess_buf, sizeof(i->machine_index), 0,
+              (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
+            if (i->debug) printf("sent request for machine ids\n");
+    }
     num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
     if (num > 0){
       printf("Rcv\n");
@@ -123,20 +136,28 @@ void get_neighbor(struct initializers *i){
               i->mess_buf[bytes] = 0;
               printf( "received : %d\n", i->mess_buf[0] );
       /* Check to see if this is our neighbor */
-          sender_id = i->mess_buf[0];
+        if (i->mess_buf[0] == 3) {
+          sender_id = i->mess_buf[1];
           if (i->next_machine == sender_id)
             {
               if (i->debug) printf("Found our neighbor %d", sender_id);
               next_machine_ip = i->next_machine_addr.sin_addr.s_addr;
             }
+        }
+        else {
+          if (i->debug) printf("Expected machine id type, got: %d\n", i->mess_buf[0]);
+
+        }
       }
     }
+
   }
 }
 void send_id(struct initializers *i)
 {
-  if (i->debug) printf("Sending hello to group\n");
-  i-> mess_buf[0] = i->machine_index;
+  if (i->debug) printf("Sending machine id to group\n");
+  i-> mess_buf[0] = 3;
+  i-> mess_buf[1] = i->machine_index;
   sendto( i->ss, i->mess_buf, sizeof(i->machine_index), 0,
           (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
           printf("sent\n");
@@ -215,20 +236,24 @@ int parseargs(int argc, char **argv, struct initializers *i)
         return 1;
     }
 }
+/* Message types: */
+/* 1 = Data */
+/* 2 = Token */
+/* 3 = Machine id message */
+/* 4 = Machine id request */
 int main(int argc, char **argv)
 {
 	/* Variables */
     struct sockaddr_in name;
     struct sockaddr_in send_addr;
-
     int                mcast_addr;
-
     struct ip_mreq     mreq;
     unsigned char      ttl_val;
-
-    int                ss,sr;
+    int                ss,sr, num, bytes;
     fd_set             mask;
     fd_set             dummy_mask,temp_mask;
+    struct timeval    timeout;
+    socklen_t        from_len;
 
 	struct initializers *i=malloc(sizeof(struct initializers));
 	struct token_structure *t=malloc(sizeof(struct token_structure));
@@ -240,10 +265,45 @@ int main(int argc, char **argv)
 	gettimeofday( &ti, NULL );
 	srand( ti.tv_sec );
   i->packet_index = 0;
-  setup(i);
+  setup(i); /*Setup ports and wait for start process */
+  send_id(i); /*Send out our ID to the group */
+  get_neighbor(i); /* Get our neighbor's id */
+
   if (i->machine_index == 1) {
     send_data(i, t); /*Send data is going to update the token too*/
     send_token(i, t);
+  }
+  while(1) {
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+    temp_mask = mask;
+    num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
+    if (num > 0){
+      if (i->debug) printf("Rcv\n");
+      if ( FD_ISSET( i->sr, &temp_mask) ) {
+        bytes = recvfrom( i->sr, i->mess_buf, sizeof(i->mess_buf), 0,
+                          (struct sockaddr *)&i->next_machine_addr,
+                          &from_len );
+        i->mess_buf[bytes] = 0;
+        printf( "received : %d\n", i->mess_buf[0] );
+        if (i->mess_buf[0] == 1){
+          /* Data packet. store it to memory */
+        }
+        else if (i->mess_buf[0] == 2){
+          /* Token received */
+          if (i->debug) printf("Received token");
+          /* send_rtr(i, t); */
+          /* send_data(i, t); */ /*Send data is going to update the token too*/
+          /* update_rtr(i, t); */
+          /* update_token */
+          send_token(i, t);
+        }
+        else if (i->mess_buf[0] == 4){
+          /*Request to send machine id */
+        }
+      }
+
+    }
   }
   return (0);
 }
