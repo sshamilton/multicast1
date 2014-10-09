@@ -201,6 +201,7 @@ struct packet_structure *generate_packet(struct initializers *i, struct token_st
   p->packet_index = i->packet_index;
   p->received=0; /* Packet sent is set to 0, so receiving machine can update */
   p->machine_index = i->machine_index;
+  p->type = 1; /*packet data type */
   p->random_number=r;
   /* Stores the newly generated packet into the unwritten array */
   i->unwritten_packets[p->sequence % ARRAY_SIZE] = p;
@@ -219,7 +220,9 @@ void send_data(struct initializers *i, struct token_structure *t){
   int pr = t->sequence - ((i->prior_token_aru > t->aru)?t->aru:i->prior_token_aru); /* Number of outstanding packets */
   int psend; /*Number of packets we are sending send */
   int fcc = t->fcc;
-  if (pr < t->fcc) { /* Too many tokens on ring, send less than fcc */
+  int sent;
+  printf("Attempt to send %d packets", i->packets_to_send);
+  if (pr >= t->fcc) { /* Too many tokens on ring, send less than fcc */
     fcc = pr;
   }
   if (i->packets_to_send > 0) {
@@ -231,8 +234,9 @@ void send_data(struct initializers *i, struct token_structure *t){
     }
     for (p=1; p<=psend; p++) {
       packet = generate_packet(i, t);
-      sendto(i->ss, packet, sizeof(struct packet_structure), 0,
+      sent = sendto(i->ss, packet, sizeof(struct packet_structure), 0,
         (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
+      if (i->debug) printf("Sent %d bytes\n", sent);
       i->packets_to_send--; /* Decrement the packets to send */
     }
   }
@@ -350,7 +354,7 @@ int main(int argc, char **argv)
         sleep(1);
         if (p->type == 1){
           /* Data packet. store it to memory */
-          printf("Rcv type 1\n");
+          printf("Rcv data packet\n\n");
           receive_packet(i, t);
 	}
         else if (p->type == 2){
