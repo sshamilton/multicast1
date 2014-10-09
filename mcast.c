@@ -3,6 +3,8 @@
 
 #include "net_include.h"
 #include "unistd.h"
+#include "stdlib.h"
+
 struct token_structure token_generate() {
   struct token_structure t;
   return t;
@@ -204,15 +206,25 @@ struct packet_structure *generate_packet(struct initializers *i, struct token_st
   i->unwritten_packets[p->sequence % ARRAY_SIZE] = p;
   return p;
 }
-
+void receive_packet(struct initializers *i, struct token_structure *t) {
+  /* receiving data */
+  struct packet_structure *p=malloc(sizeof(struct packet_structure));
+  p = (struct packet_structure *)i->mess_buf;
+  printf("Recieved type %d, seq %d\n", p->type, p->sequence);
+}
 void send_data(struct initializers *i, struct token_structure *t){
   /*sends data up to fcc*/
   struct packet_structure *packet;
   int p;
+  int pr = t->sequence - ((i->prior_token_aru > t->aru)?t->aru:i->prior_token_aru); /* Number of outstanding packets */
   int psend; /*Number of packets we are sending send */
+  int fcc = t->fcc;
+  if (pr < t->fcc) { /* Too many tokens on ring, send less than fcc */
+    fcc = pr;
+  }
   if (i->packets_to_send > 0) {
-    if (i->packets_to_send > t->fcc){
-      psend = t->fcc; /*We have max fcc packets */
+    if (i->packets_to_send > fcc ) {
+      psend = fcc; /* send to max fcc */
     }
     else {
       psend = i->packets_to_send; /*we are getting to the end of our packets, send the rest */
@@ -229,14 +241,14 @@ void send_data(struct initializers *i, struct token_structure *t){
 void send_token(struct initializers *i,struct token_structure *t) {
   /*sends the current token to the next process (unicast)*/
   int size, from_ip;
-  int z;  
+  int z;
   sleep(2);
   printf("Sending token");
   size = sendto( i->ts, (char *)t, sizeof(struct token_structure), 0,
           (struct sockaddr *)&i->next_machine_addr, sizeof(i->next_machine_addr));
   printf("Sendto result: %d\n", size);
   from_ip = i->next_machine_addr.sin_addr.s_addr;
-  printf( "sent to (%d.%d.%d.%d): \n", 
+  printf( "sent to (%d.%d.%d.%d): \n",
 	(htonl(from_ip) & 0xff000000)>>24,
 	(htonl(from_ip) & 0x00ff0000)>>16,
 	(htonl(from_ip) & 0x0000ff00)>>8,
@@ -307,13 +319,14 @@ int main(int argc, char **argv)
   setup(i); /*Setup ports and wait for start process */
   send_id(i); /*Send out our ID to the group */
   get_neighbor(i); /* Get our neighbor's id */
-
+  i->max_packets = FCC*6;
   if (i->machine_index == 1) {
     send_data(i, t); /*Send data is going to update the token too*/
     t->type = 2;
     t->sequence = 0;
     t->aru = 0;
     t->loss_level = 0;
+    send_data(i, t);
     send_token(i, t);
     if (i->debug) printf("I'm first, sending the initial token\n");
   }
@@ -338,6 +351,7 @@ int main(int argc, char **argv)
         if (p->type == 1){
           /* Data packet. store it to memory */
           printf("Rcv type 1\n");
+          receive_packet(i, t);
 	}
         else if (p->type == 2){
           /* Token received */

@@ -13,7 +13,7 @@
 #include <errno.h>
 
 #define PORT	     10080 /* assigned address */
-#define FCC          200
+#define FCC          10 /* change this later */
 #define PACKET_SIZE  1200
 #define MAX_MESS_LEN 8192
 #define ARRAY_SIZE   1024
@@ -52,6 +52,7 @@ struct initializers {
   int debug;
   int token_timeout;
   int prior_token_aru;
+  int max_packets;
   char mess_buf[MAX_MESS_LEN];
   struct sockaddr_in name;
   struct sockaddr_in send_addr;
