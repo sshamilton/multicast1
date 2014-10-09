@@ -94,7 +94,7 @@ void setup(struct initializers *i) {
 };
 void get_neighbor(struct initializers *i){
   fd_set  dummy_mask,temp_mask;
-  struct	timeval timeout;
+  struct	timeval timeout, end_time, start_time;
   fd_set  mask;
   int     next_machine_ip =0;
   int     num,bytes,sender_id;
@@ -221,7 +221,7 @@ void send_token(struct initializers *i,struct token_structure *t) {
 }
 
 void add_packet(struct initializers *i, struct packet_structure *p){
-  /* 
+  /*
    * Adds an incoming packet to the data structure by mallocing the appropriate
    * space and then memcpying the incoming data into the newly allocated space.
    */
@@ -261,16 +261,13 @@ int main(int argc, char **argv)
 	/* Variables */
     struct sockaddr_in name;
     struct sockaddr_in send_addr;
-
     int                mcast_addr;
-
     struct ip_mreq     mreq;
     unsigned char      ttl_val;
-
-    int                ss,sr;
+    int                ss,sr, bytes, num;
     fd_set             mask;
     fd_set             dummy_mask,temp_mask;
-    struct timeval    timeout;
+    struct timeval    timeout, start;
     socklen_t        from_len;
 
 	struct initializers *i=malloc(sizeof(struct initializers));
