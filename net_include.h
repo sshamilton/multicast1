@@ -36,7 +36,6 @@ struct token_structure {
   int aru;
   int fcc;
   int rtr[FCC];
-  int rcv_process_id;
   int loss_level;
 };
 

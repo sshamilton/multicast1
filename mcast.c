@@ -102,6 +102,7 @@ void get_neighbor(struct initializers *i){
   socklen_t        from_len;
   gettimeofday(&start_time, NULL);
   double t1, t2;
+  struct packet_structure *p=malloc(sizeof(struct packet_structure));
   t1=start_time.tv_sec+(start_time.tv_usec/1000000.0);
   /* Calculate our neighbor */
   if (i->machine_index == i->total_machines) {
@@ -111,19 +112,26 @@ void get_neighbor(struct initializers *i){
   else{
     i->next_machine = i->machine_index + 1;
   }
+  FD_ZERO(&mask);
+  FD_ZERO(&dummy_mask);
+  FD_SET(i->sr, &mask);
+  p->type = 3;
+  p->sequence = i->machine_index;
   while (next_machine_ip == 0) {
     timeout.tv_sec = 5;
     timeout.tv_usec = 2000;
     temp_mask = mask;
     gettimeofday(&end_time, NULL);
     t2=end_time.tv_sec+(start_time.tv_usec/1000000.0);
-    if (t1 < (t2-1)) {
-      i-> mess_buf[0] = 3; /*Timed out.  Requesting machine ids*/
+    if (t1 < (t2-10)) {
+      /*Timed out.  Requesting machine ids*/
       if (i->debug) printf("Timed out requesting machine id\n");
-      i-> mess_buf[1] = i->machine_index;
-      sendto( i->ss, i->mess_buf, sizeof(i->machine_index), 0,
+      p->sequence = i->machine_index;
+      p->type = 4;
+      sendto( i->ss, (char *)p, sizeof(p), 0,
               (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
             if (i->debug) printf("sent request for machine ids\n");
+      t1 = t2;
     }
     num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
     if (num > 0){
@@ -135,14 +143,17 @@ void get_neighbor(struct initializers *i){
               /* Note: This may not be the next machine, but we are using
                       the sockaddr called this for reuse purposes */
               i->mess_buf[bytes] = 0;
-              printf( "received : %d\n", i->mess_buf[0] );
-      /* Check to see if this is our neighbor */
-        if (i->mess_buf[0] == 3) {
-          sender_id = i->mess_buf[1];
+	      p = (struct packet_structure *)i->mess_buf;
+              printf( "received :Type %d, machine id %d \n", p->type, p->sequence );
+      	printf("Neighbor is %d", i->next_machine);
+	/* Check to see if this is our neighbor */
+        if (p->type == 3) {
+          sender_id = p->sequence;
           if (i->next_machine == sender_id)
             {
-              if (i->debug) printf("Found our neighbor %d", sender_id);
+              if (i->debug) printf("Found our neighbor %d\n", sender_id);
               next_machine_ip = i->next_machine_addr.sin_addr.s_addr;
+	      i->next_machine_addr.sin_port = htons(PORT);
             }
         }
         else {
@@ -156,10 +167,11 @@ void get_neighbor(struct initializers *i){
 }
 void send_id(struct initializers *i)
 {
+  struct packet_structure *p=malloc(sizeof(struct packet_structure));
   if (i->debug) printf("Sending machine id to group\n");
-  i-> mess_buf[0] = 3;
-  i-> mess_buf[1] = i->machine_index;
-  sendto( i->ss, i->mess_buf, sizeof(i->machine_index), 0,
+  p->type = 3;
+  p->sequence = i->machine_index;
+  sendto( i->ss, (char *)p, sizeof(struct packet_structure), 0,
           (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
           printf("sent\n");
 }
@@ -217,8 +229,19 @@ void send_data(struct initializers *i, struct token_structure *t){
 
 void send_token(struct initializers *i,struct token_structure *t) {
   /*sends the current token to the next process (unicast)*/
-  sendto( i->ts, t, sizeof(struct token_structure), 0,
+  int size, from_ip;
+  int z;  
+  sleep(2);
+  printf("Sending token");
+  size = sendto( i->ts, (char *)t, sizeof(struct token_structure), 0,
           (struct sockaddr *)&i->next_machine_addr, sizeof(i->next_machine_addr));
+  printf("Sendto result: %d\n", size);
+  from_ip = i->next_machine_addr.sin_addr.s_addr;
+  printf( "sent to (%d.%d.%d.%d): \n", 
+	(htonl(from_ip) & 0xff000000)>>24,
+	(htonl(from_ip) & 0x00ff0000)>>16,
+	(htonl(from_ip) & 0x0000ff00)>>8,
+	(htonl(from_ip) & 0x000000ff) );
 }
 
 void add_packet(struct initializers *i, struct packet_structure *p){
@@ -270,6 +293,7 @@ int main(int argc, char **argv)
     fd_set             dummy_mask,temp_mask;
     struct timeval    timeout, start;
     socklen_t        from_len;
+    struct sockaddr_in receive_from;
 
 	struct initializers *i=malloc(sizeof(struct initializers));
 	struct token_structure *t=malloc(sizeof(struct token_structure));
@@ -287,8 +311,16 @@ int main(int argc, char **argv)
 
   if (i->machine_index == 1) {
     send_data(i, t); /*Send data is going to update the token too*/
+    t->type = 2;
+    t->sequence = 0;
+    t->aru = 0;
+    t->loss_level = 0;
     send_token(i, t);
+    if (i->debug) printf("I'm first, sending the initial token\n");
   }
+  FD_ZERO(&mask);
+  FD_ZERO(&dummy_mask);
+  FD_SET(i->sr, &mask);
   while(1) {
     timeout.tv_sec = 5;
     timeout.tv_usec = 0;
@@ -298,23 +330,28 @@ int main(int argc, char **argv)
       if (i->debug) printf("Rcv\n");
       if ( FD_ISSET( i->sr, &temp_mask) ) {
         bytes = recvfrom( i->sr, i->mess_buf, sizeof(i->mess_buf), 0,
-                          (struct sockaddr *)&i->next_machine_addr,
+                          (struct sockaddr *)&receive_from,
                           &from_len );
         i->mess_buf[bytes] = 0;
-        printf( "received : %d\n", i->mess_buf[0] );
-        if (i->mess_buf[0] == 1){
+        p = (struct packet_structure *)i->mess_buf;
+        if (i->debug) printf("Pack type %d rcv in main\n", p->type);
+        sleep(1);
+        if (p->type == 1){
           /* Data packet. store it to memory */
-        }
-        else if (i->mess_buf[0] == 2){
+          printf("Rcv type 1\n");
+	}
+        else if (p->type == 2){
           /* Token received */
           if (i->debug) printf("Received token");
+          printf("Rcv type 2\n|");
           /* send_rtr(i, t); */
           /* send_data(i, t); */ /*Send data is going to update the token too*/
           /* update_rtr(i, t); */
           /* update_token */
+	  t = (struct token_structure *)i->mess_buf;
           send_token(i, t);
         }
-        else if (i->mess_buf[0] == 4){
+        else if (p->type == 4){
           /*Request to send machine id */
         }
       }
