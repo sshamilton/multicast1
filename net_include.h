@@ -37,6 +37,7 @@ struct token_structure {
   int fcc;
   int rtr[FCC];
   int loss_level;
+  int nodata;
 };
 
 struct initializers {
@@ -52,6 +53,7 @@ struct initializers {
   int debug;
   int token_timeout;
   int prior_token_aru;
+  int local_aru;
   int max_packets;
   char mess_buf[MAX_MESS_LEN];
   struct sockaddr_in name;
