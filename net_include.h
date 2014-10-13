@@ -37,7 +37,7 @@ struct token_structure {
   int fcc;
   int rtr[FCC];
   int loss_level;
-  int nodata;
+  int nodata[10];
 };
 
 struct initializers {

@@ -25,8 +25,8 @@ void setup(struct initializers *i) {
     unsigned char      ttl_val;
    char logfilename[10];
    snprintf(logfilename, 10, "%d.out", i->machine_index);
-   i->written_seq = 0;
-   i->prior_token_aru = 0;
+   i->written_seq = -1;
+   i->prior_token_aru = -1;
    i->logfile = fopen(logfilename, "w");
 
     mcast_addr = 225 << 24 | 1 << 16 | 2 << 8 | 108; // 225.1.2.108
@@ -206,7 +206,7 @@ int write_log(struct initializers *i, struct token_structure *t) {
    int seq;
    if (i->debug) printf("Writing to log:prior: %d, aru: %d tseq = %d\n", i->prior_token_aru, t->aru, t->sequence);
    num_to_write = ((i->prior_token_aru > t->aru)?t->aru:i->prior_token_aru);
-   for (c=i->written_seq; c < num_to_write; c++) {   
+   for (c=i->written_seq+1; c <= num_to_write; c++) {   
      seq = c % ARRAY_SIZE;
      fprintf(i->logfile, "%2d, %8d, %8d\n", i->unwritten_packets[seq]->machine_index, 
 					    i->unwritten_packets[seq]->sequence, 
@@ -257,15 +257,25 @@ void printpacket (struct packet_structure *p) {
   printf("Machine id: %d, Seq: %d, Rand: %di\n", p->machine_index, p->sequence, p->random_number);
 }
 
+void printtoken (struct token_structure *t, struct initializers *i) {
+  printf("Token Seq: %d, Aru: %d, Loss level %d, Nodata:", t->sequence, t->aru, t->loss_level);
+  int c;
+  for (c=0; c < i->total_machines; c++) {
+    printf("M%dD%d", c, t->nodata[c]);
+  }
+  printf("\n");
+}
 
 struct packet_structure *generate_packet(struct initializers *i, struct token_structure *t){
   /* Generates the next packet, and */
   int r = rand() % 1000000 + 1;
   struct packet_structure *p=malloc(sizeof(struct packet_structure));
+  if (t->aru == t->sequence) {
+     t->aru++;
+     i->local_aru++;
+  }
   t->sequence++; /* Increase the token sequence number */
   p->sequence = t->sequence;
-  i->packet_index++; /*Increase the packet sequence number */
-  p->packet_index = i->packet_index;
   p->received=0; /* Packet sent is set to 0, so receiving machine can update */
   p->machine_index = i->machine_index;
   p->type = 1; /*packet data type */
@@ -274,9 +284,7 @@ struct packet_structure *generate_packet(struct initializers *i, struct token_st
   add_packet(i, p);
   if (i->debug) printf("Generated:\n");
   if (i->debug) printpacket(p);
-  if (t->aru == t->sequence) t->aru++;
-  if (t->aru == i->local_aru) i->local_aru++;
-  t->sequence++; /* Increse the token sequence number */
+  printf("T sequence = %d\n", t->sequence);
   return p;
 }
 void receive_packet(struct initializers *i, struct token_structure *t) {
@@ -314,6 +322,7 @@ void send_data(struct initializers *i, struct token_structure *t){
     }
     for (p=1; p<=psend; p++) {
       packet = generate_packet(i, t);
+      sleep(1); /* For tsting */
       sent = sendto(i->ss, packet, sizeof(struct packet_structure), 0,
         (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
       if (i->debug) printf("Sent sequence %d \n", packet->sequence);
@@ -321,7 +330,7 @@ void send_data(struct initializers *i, struct token_structure *t){
     }
   }
   else {
-   t->nodata++; /*add us to the machines with no data to send */
+   t->nodata[i->machine_index-1] = 1; /*add us to the machines with no data to send */
   }
 }
 
@@ -390,7 +399,7 @@ int main(int argc, char **argv)
     int                mcast_addr;
     struct ip_mreq     mreq;
     unsigned char      ttl_val;
-    int                ss,sr, bytes, num;
+    int                ss,sr, bytes, num, c, allreceived;
     fd_set             mask;
     fd_set             dummy_mask,temp_mask;
     struct timeval    timeout, start;
@@ -412,15 +421,18 @@ int main(int argc, char **argv)
   get_neighbor(i); /* Get our neighbor's id */
   i->max_packets = FCC*6;
   if (i->machine_index == 1) {
-    send_data(i, t); /*Send data is going to update the token too*/
     t->type = 2;
-    t->sequence = 0;
-    t->aru = 0;
+    t->sequence = -1;
+    t->aru = -1;
     t->loss_level = 0;
-    t->nodata = 0;
+    for (c=0; c < i->total_machines; c++) {
+      t->nodata[c] = 0;
+    }
     sleep(1); /* Work on startup before removing this! */
     send_data(i, t);
     i->prior_token_aru = t->aru; /* Update last aru */
+    printf("Sending token:\n");
+    printtoken(t, i); 
     send_token(i, t);
     if (i->debug) printf("I'm first, sending the initial token\n");
   }
@@ -449,8 +461,9 @@ int main(int argc, char **argv)
 	}
         else if (p->type == 2){
           /* Token received */
-          if (i->debug) printf("Received token");
+          if (i->debug) printf("Received token\n");
           t = (struct token_structure *)i->mess_buf;
+	  if (i->debug) printtoken(t, i);
           t->aru = i->local_aru; 
 	  /* send_rtr(i, t); */
           send_data(i, t);  /*Send data is going to update the token too*/
@@ -458,12 +471,22 @@ int main(int argc, char **argv)
           /* update_rtr(i, t); */
           /* update_token */
 	  /* End when all have sent their data */
-          printf("Nodata: %d, tseq: %d, prior aru: %d\n", t->nodata, t->sequence, i->prior_token_aru);
-          if (t->nodata > i->total_machines && t->sequence == i->prior_token_aru ) {
-                fclose(i->logfile);
-                exit (0);
-          }
-
+ 	  if (i->packets_to_send == 0)
+            printf("Nodata: %d, tseq: %d, prior aru: %d\n", t->nodata, t->sequence, i->prior_token_aru);
+            if (t->sequence == i->prior_token_aru ) {
+              allreceived=1;
+  	      for (c=0; c < i->total_machines; c++) {
+		if (t->nodata[c] == 0) {
+		  allreceived = 0;
+		}
+	      }
+  	      if (allreceived) {
+                send_token(i, t);
+	        fclose(i->logfile);
+		  exit(0);
+		}
+            }
+ 	    
           i->prior_token_aru = t->aru; /* Update last aru */
           send_token(i, t);
         }
