@@ -217,9 +217,39 @@ int write_log(struct initializers *i, struct token_structure *t) {
    i->written_seq = num_to_write;
 }
 
-void update_rtr(struct initializers *i){
+
+
+// Update_rtr works under the assumption that the rtr is going to clear once it
+// gets called. This should always be true because we clear the rtr everytime we
+// do a "send_rtr_packets" call.
+
+void update_rtr(struct initializers *i, struct token_structure *t){
   /*Writes rtr to token based on missing packets */
+  // May need debugging! Haven't tested this code yet!
+
+  // Using written_seq as an indicator for the sequence number of most recent
+  // written packet
+
+    int j, k;
+    k = 0;
+
+    // we use the sequence on the current token to tell us what the highest
+    // value packet is that has been sent out. Then we know that the packets
+    // were are missing have sequence greater than written_seq and less than the
+    // token's sequence.
+    for (j = i->written_seq + 1; j < t->sequence; j++) {
+        // if we encounter a null value in our array, we want to put the
+        // sequence number in the rtr.
+        if (i->unwritten_packets[j % ARRAY_SIZE] == NULL) {
+            // insert_rtr is used to insert a new rtr into the token.
+            t->rtr[k++] = t->sequence;
+        }
+    }
+
+    // Should exit loop when we get to the last packet sent by the whole group
+    // which has sequence number shown on the token sequence.
 }
+
 
 void printpacket (struct packet_structure *p) {
   printf("Machine id: %d, Seq: %d, Rand: %di\n", p->machine_index, p->sequence, p->random_number);
@@ -305,8 +335,22 @@ void send_token(struct initializers *i,struct token_structure *t) {
 }
 
 
-void send_rtr_packets(struct initializers *i, struct token_structure *t){
-  /* sends packets needed to be retransmitted from token rtr */
+/*
+ * send_rtr_packets will now set the rtr array values to 0 so that update_rtr can
+ * easily put the correct retransmit requests back into the array.
+ *
+ */
+
+void send_rtr_packets(struct initializers *i, struct token_structure *t) {
+    int j = 0;
+    for (j = 0; j < FCC && t->rtr[j] != 0; j++) {
+        if (i->unwritten_packets[t->rtr[j] % ARRAY_SIZE] != NULL) {
+            sendto(i->ss, i->unwritten_packets[t->rtr[j] % ARRAY_SIZE],
+                   sizeof(struct packet_structure), 0, (struct sockaddr *)&i->send_addr,
+                   sizeof(i->send_addr));
+        }
+        t->rtr[j] = 0;
+    }
 }
 
 int parseargs(int argc, char **argv, struct initializers *i)
