@@ -197,6 +197,7 @@ struct packet_structure *generate_packet(struct initializers *i, struct token_st
   struct packet_structure *p=malloc(sizeof(struct packet_structure));
   t->sequence++; /* Increase the token sequence number */
   p->sequence = t->sequence;
+  p->type = 1; /*data packet type */
   i->packet_index++; /*Increase the packet sequence number */
   p->packet_index = i->packet_index;
   p->received=0; /* Packet sent is set to 0, so receiving machine can update */
