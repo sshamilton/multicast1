@@ -172,6 +172,16 @@ void get_neighbor(struct initializers *i){
 
   }
 }
+
+void add_packet(struct initializers *i, struct packet_structure *p){
+  /*
+ *    * Adds an incoming packet to the data structure by mallocing the appropriate
+ *       * space and then memcpying the incoming data into the newly allocated space.
+ *          */
+  i->unwritten_packets[p->sequence % ARRAY_SIZE] = malloc(sizeof(struct packet_structure));
+  memcpy(i->unwritten_packets[p->sequence % ARRAY_SIZE], p,
+         sizeof(struct packet_structure));
+}
 void send_id(struct initializers *i)
 {
   struct packet_structure *p=malloc(sizeof(struct packet_structure));
@@ -330,16 +340,6 @@ void send_token(struct initializers *i,struct token_structure *t) {
 	(htonl(from_ip) & 0x00ff0000)>>16,
 	(htonl(from_ip) & 0x0000ff00)>>8,
 	(htonl(from_ip) & 0x000000ff) );
-}
-
-void add_packet(struct initializers *i, struct packet_structure *p){
-  /*
-   * Adds an incoming packet to the data structure by mallocing the appropriate
-   * space and then memcpying the incoming data into the newly allocated space.
-   */
-  i->unwritten_packets[p->sequence % ARRAY_SIZE] = malloc(sizeof(struct packet_structure));
-  memcpy(i->unwritten_packets[p->sequence % ARRAY_SIZE], p,
-         sizeof(struct packet_structure));
 }
 
 /*
