@@ -82,6 +82,7 @@ void setup(struct initializers *i) {
       temp_mask = mask;
       num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
       if (num > 0){
+        printf("Rcv\n");
         if ( FD_ISSET( i->sr, &temp_mask) ) {
                 bytes = recvfrom( i->sr, i->mess_buf, sizeof(i->mess_buf), 0,
                                   (struct sockaddr *)&i->next_machine_addr,
@@ -260,7 +261,10 @@ struct packet_structure *generate_packet(struct initializers *i, struct token_st
   /* Generates the next packet, and */
   int r = rand() % 1000000 + 1;
   struct packet_structure *p=malloc(sizeof(struct packet_structure));
+  t->sequence++; /* Increase the token sequence number */
   p->sequence = t->sequence;
+  i->packet_index++; /*Increase the packet sequence number */
+  p->packet_index = i->packet_index;
   p->received=0; /* Packet sent is set to 0, so receiving machine can update */
   p->machine_index = i->machine_index;
   p->type = 1; /*packet data type */
@@ -324,8 +328,11 @@ void send_token(struct initializers *i,struct token_structure *t) {
   /*sends the current token to the next process (unicast)*/
   int size, from_ip;
   int z;
+  sleep(2);
+  printf("Sending token");
   size = sendto( i->ts, (char *)t, sizeof(struct token_structure), 0,
           (struct sockaddr *)&i->next_machine_addr, sizeof(i->next_machine_addr));
+  printf("Sendto result: %d\n", size);
   from_ip = i->next_machine_addr.sin_addr.s_addr;
   printf( "token sent to (%d.%d.%d.%d): \n",
 	(htonl(from_ip) & 0xff000000)>>24,
@@ -334,6 +341,15 @@ void send_token(struct initializers *i,struct token_structure *t) {
 	(htonl(from_ip) & 0x000000ff) );
 }
 
+void add_packet(struct initializers *i, struct packet_structure *p){
+  /*
+   * Adds an incoming packet to the data structure by mallocing the appropriate
+   * space and then memcpying the incoming data into the newly allocated space.
+   */
+  i->unwritten_packets[p->sequence % ARRAY_SIZE] = malloc(sizeof(struct packet_structure));
+  memcpy(i->unwritten_packets[p->sequence % ARRAY_SIZE], p,
+         sizeof(struct packet_structure));
+}
 
 /*
  * send_rtr_packets will now set the rtr array values to 0 so that update_rtr can
@@ -405,6 +421,7 @@ int main(int argc, char **argv)
   get_neighbor(i); /* Get our neighbor's id */
   i->max_packets = FCC*6;
   if (i->machine_index == 1) {
+    send_data(i, t); /*Send data is going to update the token too*/
     t->type = 2;
     t->sequence = 0;
     t->aru = 0;
@@ -425,6 +442,7 @@ int main(int argc, char **argv)
     temp_mask = mask;
     num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
     if (num > 0){
+      if (i->debug) printf("Rcv\n");
       if ( FD_ISSET( i->sr, &temp_mask) ) {
         bytes = recvfrom( i->sr, i->mess_buf, sizeof(i->mess_buf), 0,
                           (struct sockaddr *)&receive_from,
