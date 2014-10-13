@@ -142,7 +142,6 @@ void get_neighbor(struct initializers *i){
     }
     num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
     if (num > 0){
-      printf("Rcv\n");
       if ( FD_ISSET( i->sr, &temp_mask) ) {
               bytes = recvfrom( i->sr, i->mess_buf, sizeof(i->mess_buf), 0,
                                 (struct sockaddr *)&i->next_machine_addr,
@@ -190,7 +189,6 @@ void send_id(struct initializers *i)
   p->sequence = i->machine_index;
   sendto( i->ss, (char *)p, sizeof(struct packet_structure), 0,
           (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
-          printf("sent\n");
 }
 void update_token(struct token_structure *t, int sequence) {
   /* updates the token with sequence number */
@@ -212,7 +210,7 @@ int write_log(struct initializers *i, struct token_structure *t) {
 					    i->unwritten_packets[seq]->sequence, 
 					    i->unwritten_packets[seq]->random_number);
      /* free(i->unwritten_packets[seq]); */
-     printf("%2d, %8d, %8d\n", i->unwritten_packets[seq]->machine_index,
+     if (i->debug) printf("%2d, %8d, %8d\n", i->unwritten_packets[seq]->machine_index,
                                             i->unwritten_packets[seq]->sequence,
                                             i->unwritten_packets[seq]->random_number);
    }
@@ -284,15 +282,14 @@ struct packet_structure *generate_packet(struct initializers *i, struct token_st
   add_packet(i, p);
   if (i->debug) printf("Generated:\n");
   if (i->debug) printpacket(p);
-  printf("T sequence = %d\n", t->sequence);
+  if (i->debug) printf("T sequence = %d\n", t->sequence);
   return p;
 }
 void receive_packet(struct initializers *i, struct token_structure *t) {
   /* receiving data */
   struct packet_structure *p=malloc(sizeof(struct packet_structure));
   p = (struct packet_structure *)i->mess_buf;
-  printf("Rcv packet:");
-  printpacket(p);
+  if (i->debug) printpacket(p);
   if (i->debug) printf("Recieved type %d, seq %d taru = %d, laru = %d\n", p->type, p->sequence, t->aru, i->local_aru);
   if (i->local_aru == (p->sequence -1))
   {
@@ -310,8 +307,8 @@ void send_data(struct initializers *i, struct token_structure *t){
   int fcc = t->fcc;
   int sent;
   if (i->debug) printf("Sending %d packets\n", i->packets_to_send);
-  if (pr >= t->fcc) { /* Too many tokens on ring, send less than fcc */
-    fcc = pr;
+  if (pr >= ARRAY_SIZE - t->fcc) { /* Too many tokens on ring, send less than fcc */
+    fcc = 0;
   }
   if (i->packets_to_send > 0) {
     if (i->packets_to_send > fcc ) {
@@ -322,7 +319,6 @@ void send_data(struct initializers *i, struct token_structure *t){
     }
     for (p=1; p<=psend; p++) {
       packet = generate_packet(i, t);
-      sleep(1); /* For tsting */
       sent = sendto(i->ss, packet, sizeof(struct packet_structure), 0,
         (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
       if (i->debug) printf("Sent sequence %d \n", packet->sequence);
@@ -338,13 +334,12 @@ void send_token(struct initializers *i,struct token_structure *t) {
   /*sends the current token to the next process (unicast)*/
   int size, from_ip;
   int z;
-  sleep(2);
-  printf("Sending token");
+  if (i->debug) printf("Sending token");
   size = sendto( i->ts, (char *)t, sizeof(struct token_structure), 0,
           (struct sockaddr *)&i->next_machine_addr, sizeof(i->next_machine_addr));
-  printf("Sendto result: %d\n", size);
+  if (i->debug) printf("Sendto result: %d\n", size);
   from_ip = i->next_machine_addr.sin_addr.s_addr;
-  printf( "token sent to (%d.%d.%d.%d): \n",
+  if (i->debug) printf( "token sent to (%d.%d.%d.%d): \n",
 	(htonl(from_ip) & 0xff000000)>>24,
 	(htonl(from_ip) & 0x00ff0000)>>16,
 	(htonl(from_ip) & 0x0000ff00)>>8,
@@ -410,7 +405,7 @@ int main(int argc, char **argv)
 	struct token_structure *t=malloc(sizeof(struct token_structure));
 	struct packet_structure *p=malloc(sizeof(struct packet_structure));
   t->fcc = FCC;
-  i->debug = 1; /*Turn on for testing */
+  i->debug = 0; /*Turn on for testing */
   parseargs(argc, argv, i);
   struct timeval ti;
 	gettimeofday( &ti, NULL );
@@ -431,7 +426,6 @@ int main(int argc, char **argv)
     sleep(1); /* Work on startup before removing this! */
     send_data(i, t);
     i->prior_token_aru = t->aru; /* Update last aru */
-    printf("Sending token:\n");
     printtoken(t, i); 
     send_token(i, t);
     if (i->debug) printf("I'm first, sending the initial token\n");
@@ -453,10 +447,8 @@ int main(int argc, char **argv)
         i->mess_buf[bytes] = 0;
         p = (struct packet_structure *)i->mess_buf;
         if (i->debug) printf("Pack type %d rcv in main\n", p->type);
-        sleep(1);
         if (p->type == 1){
           /* Data packet. store it to memory */
-          printf("Rcv data packet\n\n");
           receive_packet(i, t);
 	}
         else if (p->type == 2){
@@ -472,7 +464,7 @@ int main(int argc, char **argv)
           /* update_token */
 	  /* End when all have sent their data */
  	  if (i->packets_to_send == 0)
-            printf("Nodata: %d, tseq: %d, prior aru: %d\n", t->nodata, t->sequence, i->prior_token_aru);
+            if (i->debug) printf("Nodata: %d, tseq: %d, prior aru: %d\n", t->nodata, t->sequence, i->prior_token_aru);
             if (t->sequence == i->prior_token_aru ) {
               allreceived=1;
   	      for (c=0; c < i->total_machines; c++) {
@@ -495,6 +487,11 @@ int main(int argc, char **argv)
         }
       }
 
+    }
+    else /*We timed out so finish */
+    {
+      fclose(i->logfile);
+      exit(0);
     }
   }
   return (0);
