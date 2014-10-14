@@ -36,8 +36,10 @@ struct token_structure {
   int aru;
   int fcc;
   int rtr[FCC];
+  int rtrcount;
   int loss_level;
   int nodata[10];
+  int round;
 };
 
 struct initializers {
@@ -55,6 +57,7 @@ struct initializers {
   int prior_token_aru;
   int local_aru;
   int max_packets;
+  int local_round;
   char mess_buf[MAX_MESS_LEN];
   struct sockaddr_in name;
   struct sockaddr_in send_addr;
