@@ -42,6 +42,7 @@ struct token_structure {
   int nodata[10];
   int round;
   int aru_lowered_by;
+  int recovered;
 };
 
 struct initializers {
