@@ -41,6 +41,7 @@ struct token_structure {
   int loss_level;
   int nodata[10];
   int round;
+  int aru_lowered_by;
 };
 
 struct initializers {

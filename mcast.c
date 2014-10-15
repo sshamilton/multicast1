@@ -268,8 +268,10 @@ struct packet_structure *generate_packet(struct initializers *i, struct token_st
   /* Generates the next packet, and */
   int r = rand() % 1000000 + 1;
   struct packet_structure *p=malloc(sizeof(struct packet_structure));
-  if (t->aru == t->sequence) {
+  if (t->aru == t->sequence) { /* If we are in sequence with the token increase the aru */
      t->aru++;
+  }
+  if (i->local_aru == t->sequence) {
      i->local_aru++;
   }
   t->sequence++; /* Increase the token sequence number */
@@ -411,7 +413,7 @@ int main(int argc, char **argv)
     struct token_structure *t=malloc(sizeof(struct token_structure));
     struct packet_structure *p=malloc(sizeof(struct packet_structure));
   t->fcc = FCC;
-  i->debug = 1; /*Turn on for testing */
+  i->debug = 0; /*Turn on for testing */
   parseargs(argc, argv, i);
   struct timeval ti;
 	gettimeofday( &ti, NULL );
@@ -446,8 +448,8 @@ int main(int argc, char **argv)
   while(1) {
     
     if (i->last_to_send_token == 1) {
-       timeout.tv_sec = 0;
-       timeout.tv_usec = 10000;
+       timeout.tv_sec = 1;
+       timeout.tv_usec = 0;
     }
     else {
        timeout.tv_sec = 5;
@@ -485,9 +487,14 @@ int main(int argc, char **argv)
             if (t->aru > i->local_aru) { /*Lower token aru to our aru (It is higher than the highest in order message)*/
 	       printf("Lowering ARU from %d to %d\n", t->aru, i->local_aru);
                t->aru = i->local_aru; 
+	       t->aru_lowered_by = i->machine_index;
             }
  	    /* If is the one that lowered the aru, and the token.aru is still the same, should set token.aru to its local aru. */
-            if (i->prior_token_aru == t->aru && i->local_aru > t->aru) t->aru = i->local_aru; 
+            if (i->prior_token_aru == t->aru && i->local_aru > t->aru && t->aru_lowered_by == i->machine_index) {
+		t->aru = i->local_aru; 
+		printf("Raising ARU\n"); 
+	     }
+            printf("Prioraru %d t_aru %d, localaru: %d, tseq: %d, lowby: %d\n", i->prior_token_aru, t->aru, i->local_aru, t->sequence, t->aru_lowered_by);
             i->prior_token_aru = t->aru; /*Done with prior token aru, set the prior token aru to the token aru */
             send_rtr_packets(i, t);
             send_data(i, t);  /*Send data is going to update the token too*/
@@ -513,10 +520,9 @@ int main(int argc, char **argv)
                   exit(0);
                 }
 	    }
-          i->prior_token_aru = t->aru; /* Update last aru */
 	  //send_token(i,t);
 	  i->last_to_send_token = 1;
-	  send_token(i,t);
+	  send_token(i,t); send_token(i,t); send_token(i,t); send_token(i,t);
     }
     else {
       printf("Received token already! Local: %d, Token: %d\n", i->local_round, t->round);
@@ -550,9 +556,10 @@ int main(int argc, char **argv)
           t->type = 2; /*Really bizarre.  For some reason the token is completely lost here! Must fix! */
           t->aru = i->prior_token_aru;
           t->round = i->local_round + 1;
+	  exit(1);
 	  }
 	  t->loss_level++;
-	  printf("**********I believe I'm the last to send a token  Resending now **********\n");
+	  printf("**********I believe I'm the last to send a token  Resending now **********\n"); sleep(3);
 	  send_token(i,t); /*We sent the token last, resend it here */
 	  printf("Resent token round %d with aru %d to process %d token type: %d", t->round, t->aru, i->next_machine, t->type);
 	}
