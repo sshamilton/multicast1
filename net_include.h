@@ -17,7 +17,7 @@
 #define FCC          100 /* change this later */
 #define PACKET_SIZE  1200
 #define MAX_MESS_LEN 8192
-#define ARRAY_SIZE   1024
+#define ARRAY_SIZE   2048
 
 /* Initializer variables */
 struct packet_structure {
@@ -59,6 +59,7 @@ struct initializers {
   int local_aru;
   int max_packets;
   int local_round;
+  int last_to_send_token;
   char mess_buf[MAX_MESS_LEN];
   struct sockaddr_in name;
   struct sockaddr_in send_addr;
