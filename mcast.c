@@ -419,17 +419,10 @@ int parseargs(int argc, char **argv, struct initializers *i)
 {
     char               *at; /* position of @ symbol in 3rd arg */
     char               *compname; /* remote computer name */
-    struct timeval end_time, start_time;
-    double t1, t2;
-    gettimeofday(&start_time, NULL);
-    t1 = start_time.tv_sec+(start_time.tv_usec/1000000.0);
     /*Ensure we got the right number of arguments */
     if(argc !=5) {
-        sleep(1);
-        gettimeofday(&end_time, NULL);
-        t2=end_time.tv_sec+(end_time.tv_usec/1000000.0);
   
-      printf("Usage: mcast <num_of_packets> <machine_index> <number of machines> <loss rate> %0.6f\n", t2-t1);
+      printf("Usage: mcast <num_of_packets> <machine_index> <number of machines> <loss rate>\n");
         exit(0);
     }
     else {
