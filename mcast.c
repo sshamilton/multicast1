@@ -160,8 +160,8 @@ void get_neighbor(struct initializers *i){
   responded = 0;
   while (next_machine_ip == 0 && responded == 0) {
     send_id(i);
-    timeout.tv_sec = 1;
-    timeout.tv_usec = 0;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 10000;
     temp_mask = mask;
     num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
     if (num > 0){
@@ -171,8 +171,8 @@ void get_neighbor(struct initializers *i){
                       the sockaddr called this for reuse purposes */
               i->mess_buf[bytes] = 0;
 	      p = (struct packet_structure *)i->mess_buf;
-              printf( "received :Type %d, machine id %d \n", p->type, p->sequence );
-      	printf("Neighbor is %d", i->next_machine);
+              if (i->debug) printf( "received :Type %d, machine id %d \n", p->type, p->sequence );
+      	if (i->debug) printf("Neighbor is %d", i->next_machine);
 	/* Check to see if this is our neighbor */
         if (p->type == 3) {
           sender_id = p->machine_index;
@@ -192,7 +192,8 @@ void get_neighbor(struct initializers *i){
         }
 	if ((p->type == 4) && (i->machine_index == 1)) {
         /* Add this machine to the array and check to see if we are done */
-          response[p->machine_index] = 1; printf("Got response from %d\n", p->machine_index);
+          response[p->machine_index] = 1; 
+	  if (i->debug) printf("Got response from %d\n", p->machine_index);
 	  r = 1;
           for (c=1; c < i->total_machines; c++) {
  		if (response[c] == 0) r =0; 
@@ -214,9 +215,19 @@ void add_packet(struct initializers *i, struct packet_structure *p){
  *    * Adds an incoming packet to the data structure by mallocing the appropriate
  *       * space and then memcpying the incoming data into the newly allocated space.
  *          */
-  i->unwritten_packets[p->sequence % ARRAY_SIZE] = malloc(sizeof(struct packet_structure));
-  memcpy(i->unwritten_packets[p->sequence % ARRAY_SIZE], p,
-         sizeof(struct packet_structure));
+  if (i->unwritten_packets[p->sequence % ARRAY_SIZE] !=NULL) {
+     if (i->unwritten_packets[p->sequence % ARRAY_SIZE]->sequence != p->sequence)
+      {
+	printf("Buffer not large enough.  Failing on %d.\n", p->sequence);
+  	exit(1);
+      }
+  }
+  else 
+  {
+     i->unwritten_packets[p->sequence % ARRAY_SIZE] = malloc(sizeof(struct packet_structure));
+     memcpy(i->unwritten_packets[p->sequence % ARRAY_SIZE], p,
+     sizeof(struct packet_structure));
+  }
 }
 
 
@@ -286,8 +297,11 @@ void update_rtr(struct initializers *i, struct token_structure *t){
    /* if rtr is to big, retune */
    if (t->rtrcount == MAX_RTR) {
      printf("RTR Too Big! Need to retune...\n");
-     t->fcc = t->fcc - 20;
-     printf("Downgrading fcc from %d, to %d\n", t->fcc+20, t->fcc);
+     if (t->fcc > 40) /*Lower bound for fcc */
+      {
+	t->fcc = t->fcc - 5;
+      }
+     printf("Downgrading fcc from %d, to %d\n", t->fcc+5, t->fcc);
    }
     // Should exit loop when we get to the last packet sent by the whole group
     // which has sequence number shown on the token sequence.
@@ -355,8 +369,8 @@ void send_data(struct initializers *i, struct token_structure *t){
   int psend; /*Number of packets we are sending send */
   int fcc = t->fcc;
   int sent;
-  if (pr >= 1024 - t->fcc) { /* Too many tokens on ring, send less than fcc */
-    fcc = 0;
+  if (pr >= ARRAY_SIZE - t->fcc*i->total_machines) { /* Too many tokens on ring, send less than fcc */
+    fcc = 0; printf("Too many outstanding packets! S:%d, pr:%d\n", t->sequence, pr);
   }
   if (i->packets_to_send > 0) {
     if (i->packets_to_send > fcc ) {
@@ -385,7 +399,7 @@ void send_token(struct initializers *i,struct token_structure *t) {
   int z;
   size = sendto( i->ts, (char *)t, sizeof(struct token_structure), 0,
           (struct sockaddr *)&i->next_machine_addr, sizeof(i->next_machine_addr));
-  if (i->debug) printf("Sending Token TSeq: %d, TAru: %d, Round: %d Recovered: %d\n", t->sequence, t->aru, t->round, t->recovered);
+  if (i->debug) printf("Sending Token TSeq: %d, TAru: %d, Round: %d Recovered: %d\n", t->sequence, t->aru, t->round);
   from_ip = i->next_machine_addr.sin_addr.s_addr;
   if (i->debug) printf( "token sent to (%d.%d.%d.%d): \n",
 	(htonl(from_ip) & 0xff000000)>>24,
@@ -485,6 +499,7 @@ int main(int argc, char **argv)
   i->max_packets = FCC*6;
   i->local_aru = -1;
   if (i->machine_index == 1) {
+    usleep(100000);
     t->type = 2;
     t->sequence = -1;
     t->aru = -1;
@@ -535,7 +550,6 @@ int main(int argc, char **argv)
             if (i->machine_index == 1) {
 	      t->round++;
 	      i->local_round++;
-	      t->recovered = 0;
             }
   	    else {
 	      i->local_round = t->round;
@@ -554,7 +568,6 @@ int main(int argc, char **argv)
 		if (i->debug) printf("Raising ARU\n"); 
 	     }
             if (i->debug) printf("Prioraru %d t_aru %d, localaru: %d, tseq: %d, lowby: %d\n", i->prior_token_aru, t->aru, i->local_aru, t->sequence, t->aru_lowered_by);
-            i->prior_token_aru = t->aru; /*Done with prior token aru, set the prior token aru to the token aru */
             send_rtr_packets(i, t);
             send_data(i, t);  /*Send data is going to update the token too*/
             update_rtr(i, t);
@@ -574,7 +587,7 @@ int main(int argc, char **argv)
                 gettimeofday(&end_time, NULL);          
                 time2=end_time.tv_sec+(end_time.tv_usec/1000000.0);
                 printf("%.6lf seconds elapsed\n", time2-time1);
-                for (c = 0; c < 100; c++) {
+                for (c = 0; c < 1000; c++) {
 		   send_token(i, t); /* Ensure our neighbor gets this! */
                 }
 		 write_log(i, t); 
@@ -586,26 +599,16 @@ int main(int argc, char **argv)
           if (t->loss_level > 3) {
 	    send_token(i,t);send_token(i,t);send_token(i,t);
 	  }
+	   i->prior_token_aru = t->aru;/*Done with prior token aru, set the prior token aru to the token aru */
 	  send_token(i,t); 
-    	  last_token->sequence = t->sequence;
-	  last_token->aru = t->aru;
-	  last_token->round = t->round;
-	  last_token->aru_lowered_by = t->aru_lowered_by;
     }
     else {
-      if (i->debug) printf("Received token already! Local: %d, Token: %d\n", i->local_round, t->round);
-      //send_token(i,t);
-      if (i->machine_index == 1) {
-          if (i->local_round > t->round)
-	    {
-		if (i->debug) printf("Local round out of sync! This shouldn't happen! local: %d, Token: %d\n", i->local_round, t->round);
-		fclose(i->logfile);
-		exit(0);
-	  }
-	}
-    }
+            if (i->debug) printf("Received token already! Local: %d, Token: %d\n", i->local_round, t->round);
+          }
         }
       }
+     
+    
 
     }
     else /*We timed out */
@@ -621,7 +624,7 @@ int main(int argc, char **argv)
 	  send_id(i);
 	}
 
+     }   
     }
-  }
   return (0);
 }

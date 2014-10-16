@@ -14,7 +14,7 @@
 #include "recv_dbg.h"
 
 #define PORT	     10080 /* assigned address */
-#define FCC          300 /* change this later */
+#define FCC          600 /* Tuned */
 #define PACKET_SIZE  1200
 #define MAX_MESS_LEN 8192
 #define ARRAY_SIZE   16384
@@ -43,7 +43,6 @@ struct token_structure {
   int nodata[10];
   int round;
   int aru_lowered_by;
-  int recovered;
 };
 
 struct initializers {
