@@ -14,10 +14,10 @@
 #include "recv_dbg.h"
 
 #define PORT	     10080 /* assigned address */
-#define FCC          50 /* change this later */
+#define FCC          300 /* change this later */
 #define PACKET_SIZE  1200
 #define MAX_MESS_LEN 8192
-#define ARRAY_SIZE   2048
+#define ARRAY_SIZE   16384
 #define MAX_RTR      250
 
 /* Initializer variables */

@@ -101,6 +101,34 @@ void setup(struct initializers *i) {
     }
 
 };
+
+void send_id(struct initializers *i)
+{
+  struct hostent        h_ent;
+    struct hostent        *p_h_ent;
+    char                  my_name[80] = {'\0'};
+    int                   my_ip;
+
+    gethostname(my_name, 80 );
+
+    p_h_ent = gethostbyname(my_name);
+    if ( p_h_ent == NULL ) {
+        if (i->debug) printf("myip: gethostbyname error.\n");
+        exit(1);
+    }
+
+    memcpy( &h_ent, p_h_ent, sizeof(h_ent));
+    memcpy( &my_ip, h_ent.h_addr_list[0], sizeof(my_ip) );
+
+  struct packet_structure *p=malloc(sizeof(struct packet_structure));
+  if (i->debug) printf("Sending machine id to group\n");
+  p->type = 3;
+  p->machine_index = i->machine_index;
+  p->sequence = my_ip; /*Reusing sequence to be my ip address */
+  sendto( i->ss, (char *)p, sizeof(struct packet_structure), 0,
+          (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
+}
+
 void get_neighbor(struct initializers *i){
   fd_set  dummy_mask,temp_mask;
   struct	timeval timeout, end_time, start_time;
@@ -131,6 +159,7 @@ void get_neighbor(struct initializers *i){
   }
   responded = 0;
   while (next_machine_ip == 0 && responded == 0) {
+    send_id(i);
     timeout.tv_sec = 1;
     timeout.tv_usec = 0;
     temp_mask = mask;
@@ -189,32 +218,8 @@ void add_packet(struct initializers *i, struct packet_structure *p){
   memcpy(i->unwritten_packets[p->sequence % ARRAY_SIZE], p,
          sizeof(struct packet_structure));
 }
-void send_id(struct initializers *i)
-{
-  struct hostent        h_ent;
-    struct hostent        *p_h_ent;
-    char                  my_name[80] = {'\0'};
-    int                   my_ip;
 
-    gethostname(my_name, 80 );
 
-    p_h_ent = gethostbyname(my_name);
-    if ( p_h_ent == NULL ) {
-        if (i->debug) printf("myip: gethostbyname error.\n");
-        exit(1);
-    }
-
-    memcpy( &h_ent, p_h_ent, sizeof(h_ent));
-    memcpy( &my_ip, h_ent.h_addr_list[0], sizeof(my_ip) );
-
-  struct packet_structure *p=malloc(sizeof(struct packet_structure));
-  if (i->debug) printf("Sending machine id to group\n");
-  p->type = 3;
-  p->machine_index = i->machine_index;
-  p->sequence = my_ip; /*Reusing sequence to be my ip address */
-  sendto( i->ss, (char *)p, sizeof(struct packet_structure), 0,
-          (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
-}
 void update_token(struct token_structure *t, int sequence) {
   /* updates the token with sequence number */
 }
@@ -281,6 +286,8 @@ void update_rtr(struct initializers *i, struct token_structure *t){
    /* if rtr is to big, retune */
    if (t->rtrcount == MAX_RTR) {
      printf("RTR Too Big! Need to retune...\n");
+     t->fcc = t->fcc - 20;
+     printf("Downgrading fcc from %d, to %d\n", t->fcc+20, t->fcc);
    }
     // Should exit loop when we get to the last packet sent by the whole group
     // which has sequence number shown on the token sequence.
@@ -480,7 +487,7 @@ int main(int argc, char **argv)
   time1=start_time.tv_sec+(start_time.tv_usec/1000000.0); 
   i->packet_index = 0;
   setup(i); /*Setup ports and wait for start process */
-  send_id(i); /*Send out our ID to the group */
+  /* We now do this in get neighbor: send_id(i); Send out our ID to the group */
   get_neighbor(i); /* Get our neighbor's id */
   i->max_packets = FCC*6;
   i->local_aru = -1;
