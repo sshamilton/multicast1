@@ -14,10 +14,11 @@
 #include "recv_dbg.h"
 
 #define PORT	     10080 /* assigned address */
-#define FCC          100 /* change this later */
+#define FCC          50 /* change this later */
 #define PACKET_SIZE  1200
 #define MAX_MESS_LEN 8192
 #define ARRAY_SIZE   2048
+#define MAX_RTR      250
 
 /* Initializer variables */
 struct packet_structure {
@@ -36,7 +37,7 @@ struct token_structure {
   int sequence;
   int aru;
   int fcc;
-  int rtr[FCC*10];
+  int rtr[MAX_RTR];
   int rtrcount;
   int loss_level;
   int nodata[10];

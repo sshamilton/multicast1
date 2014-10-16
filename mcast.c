@@ -106,7 +106,8 @@ void get_neighbor(struct initializers *i){
   struct	timeval timeout, end_time, start_time;
   fd_set  mask;
   int     next_machine_ip =0;
-  int     num,bytes,sender_id;
+  int     response[10];
+  int     num,bytes,sender_id, c, responded, r;
   socklen_t        from_len;
   gettimeofday(&start_time, NULL);
   double t1, t2;
@@ -125,28 +126,18 @@ void get_neighbor(struct initializers *i){
   FD_SET(i->sr, &mask);
   p->type = 3;
   p->sequence = i->machine_index;
-  while (next_machine_ip == 0) {
-    timeout.tv_sec = 5;
-    timeout.tv_usec = 2000;
+  for (c = 0; c < i->total_machines; c++) {
+    response[c] = 0;
+  }
+  responded = 0;
+  while (next_machine_ip == 0 && responded == 0) {
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
     temp_mask = mask;
-    gettimeofday(&end_time, NULL);
-    t2=end_time.tv_sec+(start_time.tv_usec/1000000.0);
-    if (t1 < (t2-10)) {
-      /*Timed out.  Requesting machine ids*/
-      if (i->debug) printf("Timed out requesting machine id\n");
-      p->sequence = i->machine_index;
-      p->type = 4;
-      sendto( i->ss, (char *)p, sizeof(p), 0,
-              (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
-            if (i->debug) printf("sent request for machine ids\n");
-      t1 = t2;
-    }
     num = select (FD_SETSIZE, &temp_mask, &dummy_mask, &dummy_mask, &timeout);
     if (num > 0){
       if ( FD_ISSET( i->sr, &temp_mask) ) {
-              bytes = recvfrom( i->sr, i->mess_buf, sizeof(i->mess_buf), 0,
-                                (struct sockaddr *)&i->next_machine_addr,
-                                &from_len );
+              bytes = recv_dbg( i->sr, i->mess_buf, sizeof(i->mess_buf), 0);
               /* Note: This may not be the next machine, but we are using
                       the sockaddr called this for reuse purposes */
               i->mess_buf[bytes] = 0;
@@ -155,13 +146,29 @@ void get_neighbor(struct initializers *i){
       	printf("Neighbor is %d", i->next_machine);
 	/* Check to see if this is our neighbor */
         if (p->type == 3) {
-          sender_id = p->sequence;
+          sender_id = p->machine_index;
           if (i->next_machine == sender_id)
             {
               if (i->debug) printf("Found our neighbor %d\n", sender_id);
-              next_machine_ip = i->next_machine_addr.sin_addr.s_addr;
+              next_machine_ip = p->sequence;
+              i->next_machine_addr.sin_addr.s_addr = p->sequence;
 	      i->next_machine_addr.sin_port = htons(PORT);
+	      p->type = 4;
+  	      p->machine_index = i->machine_index;
+  	      sendto( i->ss, (char *)p, sizeof(struct packet_structure), 0,
+                    (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
+	      if (i->machine_index != 1) responded = 1;
+		
             }
+        }
+	if ((p->type == 4) && (i->machine_index == 1)) {
+        /* Add this machine to the array and check to see if we are done */
+          response[p->machine_index] = 1; printf("Got response from %d\n", p->machine_index);
+	  r = 1;
+          for (c=1; c < i->total_machines; c++) {
+ 		if (response[c] == 0) r =0; 
+ 		}
+           if (r==1) responded = 1;
         }
         else {
           if (i->debug) printf("Expected machine id type, got: %d\n", i->mess_buf[0]);
@@ -184,10 +191,27 @@ void add_packet(struct initializers *i, struct packet_structure *p){
 }
 void send_id(struct initializers *i)
 {
+  struct hostent        h_ent;
+    struct hostent        *p_h_ent;
+    char                  my_name[80] = {'\0'};
+    int                   my_ip;
+
+    gethostname(my_name, 80 );
+
+    p_h_ent = gethostbyname(my_name);
+    if ( p_h_ent == NULL ) {
+        if (i->debug) printf("myip: gethostbyname error.\n");
+        exit(1);
+    }
+
+    memcpy( &h_ent, p_h_ent, sizeof(h_ent));
+    memcpy( &my_ip, h_ent.h_addr_list[0], sizeof(my_ip) );
+
   struct packet_structure *p=malloc(sizeof(struct packet_structure));
   if (i->debug) printf("Sending machine id to group\n");
   p->type = 3;
-  p->sequence = i->machine_index;
+  p->machine_index = i->machine_index;
+  p->sequence = my_ip; /*Reusing sequence to be my ip address */
   sendto( i->ss, (char *)p, sizeof(struct packet_structure), 0,
           (struct sockaddr *)&i->send_addr, sizeof(i->send_addr));
 }
@@ -247,11 +271,17 @@ void update_rtr(struct initializers *i, struct token_structure *t){
         // sequence number in the rtr.
         if (i->unwritten_packets[j % ARRAY_SIZE] == NULL) {
             // insert_rtr is used to insert a new rtr into the token.
-            t->rtr[t->rtrcount] = j;
+           if (t->rtrcount < MAX_RTR) { 
+	     t->rtr[t->rtrcount] = j;
 	    if (i->debug) printf("Requesting (RTR), packet: %d\n", j);
- 	    t->rtrcount++;
+            t->rtrcount++;
+	    }
         }
     }
+   /* if rtr is to big, retune */
+   if (t->rtrcount == MAX_RTR) {
+     printf("RTR Too Big! Need to retune...\n");
+   }
     // Should exit loop when we get to the last packet sent by the whole group
     // which has sequence number shown on the token sequence.
 }
@@ -262,7 +292,12 @@ void printpacket (struct packet_structure *p) {
 }
 
 void printtoken (struct token_structure *t, struct initializers *i) {
+  int c;  
   printf("Token Seq: %d, Aru: %d, Loss level %d, RTRCount: %d Round %d, Local aru: %d, PriorARU: %d\n", t->sequence, t->aru, t->loss_level, t->rtrcount, t->round, i->local_aru, i->prior_token_aru);
+  for (c=0; c < i->total_machines; c++) {
+    printf("|P%dD%d|", c, t->nodata[c]);
+  }
+  printf("\n");
 }
 
 struct packet_structure *generate_packet(struct initializers *i, struct token_structure *t){
@@ -377,9 +412,17 @@ int parseargs(int argc, char **argv, struct initializers *i)
 {
     char               *at; /* position of @ symbol in 3rd arg */
     char               *compname; /* remote computer name */
+    struct timeval end_time, start_time;
+    double t1, t2;
+    gettimeofday(&start_time, NULL);
+    t1 = start_time.tv_sec+(start_time.tv_usec/1000000.0);
     /*Ensure we got the right number of arguments */
     if(argc !=5) {
-        printf("Usage: mcast <num_of_packets> <machine_index> <number of machines> <loss rate>\n");
+        sleep(1);
+        gettimeofday(&end_time, NULL);
+        t2=end_time.tv_sec+(end_time.tv_usec/1000000.0);
+  
+      printf("Usage: mcast <num_of_packets> <machine_index> <number of machines> <loss rate> %0.6f\n", t2-t1);
         exit(0);
     }
     else {
@@ -396,19 +439,20 @@ void token_copy (struct token_structure *t, struct token_structure *r_token) {
   t->sequence = r_token->sequence;
   t->aru = r_token->aru;
   t->fcc = r_token->fcc;
-  memcpy(t->rtr, r_token->rtr, FCC*10); /*copying the pointer here, but ok since we won't resend this part */
+  memcpy(t->rtr, r_token->rtr, FCC*4); /*copying the pointer here, but ok since we won't resend this part */
   t->rtrcount = r_token->rtrcount;
   t->loss_level = r_token->loss_level;
-  memcpy(t->nodata, r_token->nodata, 10);
+  memcpy(t->nodata, r_token->nodata, 40);
   t->round = r_token->round;
   t->aru_lowered_by = r_token->aru_lowered_by;
 }
+
 
 /* Message types: */
 /* 1 = Data */
 /* 2 = Token */
 /* 3 = Machine id message */
-/* 4 = Machine id request */
+/* 4 = Ready to begin message */
 int main(int argc, char **argv)
 {
 	/* Variables */
@@ -420,7 +464,7 @@ int main(int argc, char **argv)
   int                ss,sr, bytes, num, c, allreceived, last_to_send_token;
   fd_set             mask;
   fd_set             dummy_mask,temp_mask;
-  struct timeval    timeout, start;
+  struct timeval    timeout, start_time, end_time;;
   socklen_t        from_len;
   struct sockaddr_in receive_from;
   struct initializers *i=malloc(sizeof(struct initializers));
@@ -428,18 +472,17 @@ int main(int argc, char **argv)
   struct token_structure *r_token=malloc(sizeof(struct token_structure));
   struct token_structure *last_token=malloc(sizeof(struct token_structure));
   struct packet_structure *p=malloc(sizeof(struct packet_structure));
+  double time1, time2;
   t->fcc = FCC;
   i->debug = 0; /*Turn on for testing */
   parseargs(argc, argv, i);
-  struct timeval ti;
-	gettimeofday( &ti, NULL );
-	srand( ti.tv_sec );
+  recv_dbg_init(i->loss_rate, i->machine_index);
+  time1=start_time.tv_sec+(start_time.tv_usec/1000000.0); 
   i->packet_index = 0;
   setup(i); /*Setup ports and wait for start process */
   send_id(i); /*Send out our ID to the group */
   get_neighbor(i); /* Get our neighbor's id */
   i->max_packets = FCC*6;
-  recv_dbg_init(i->loss_rate, i->machine_index);
   i->local_aru = -1;
   if (i->machine_index == 1) {
     t->type = 2;
@@ -451,7 +494,6 @@ int main(int argc, char **argv)
     for (c=0; c < i->total_machines; c++) {
       t->nodata[c] = 0;
     }
-    sleep(1); /* Work on startup before removing this! */
     send_data(i, t);
     i->prior_token_aru = t->aru; /* Update last aru */
     if (i->debug) printtoken(t, i); 
@@ -462,6 +504,8 @@ int main(int argc, char **argv)
   FD_ZERO(&mask);
   FD_ZERO(&dummy_mask);
   FD_SET(i->sr, &mask);
+  gettimeofday(&start_time, NULL);
+  time1=start_time.tv_sec+(start_time.tv_usec/1000000.0);
   while(1) {
     
     timeout.tv_sec = 0;
@@ -526,8 +570,14 @@ int main(int argc, char **argv)
                 }
               }
               if (allreceived) {
-		printf("Ending. Sending token to %d", i->next_machine);
-		send_token(i, t);
+		if (i->debug) printf("Ending. Sending token to %d\n", i->next_machine);
+                printtoken(t, i); 
+                gettimeofday(&end_time, NULL);          
+                time2=end_time.tv_sec+(end_time.tv_usec/1000000.0);
+                printf("%.6lf seconds elapsed\n", time2-time1);
+                for (c = 0; c < 100; c++) {
+		   send_token(i, t); /* Ensure our neighbor gets this! */
+                }
 		 write_log(i, t); 
                 fclose(i->logfile);
                   exit(0);
@@ -549,18 +599,12 @@ int main(int argc, char **argv)
       if (i->machine_index == 1) {
           if (i->local_round > t->round)
 	    {
-		printf("Local round out of sync! This shouldn't happen! local: %d, Token: %d\n", i->local_round, t->round);
+		if (i->debug) printf("Local round out of sync! This shouldn't happen! local: %d, Token: %d\n", i->local_round, t->round);
 		fclose(i->logfile);
 		exit(0);
 	  }
 	}
     }
-        }
-        else if (p->type == 4){
-          /*Request to send machine id */
-        }
-        else if (p->type == 0) {
-	  if (i->debug) printf("Dropped packet\n");
         }
       }
 
@@ -568,9 +612,14 @@ int main(int argc, char **argv)
     else /*We timed out */
     {
       if (t->type == 2) {
-          printf("Resending token round: %d, %d\n", t->round, t->sequence);
+          if (i->debug) printf("Resending token round: %d, %d\n", t->round, t->sequence);
+          if (i->debug) printtoken(t, i);
 	  t->loss_level++;
           send_token(i, t); send_token(i, t);
+	}
+      else {
+	  /*We haven't begun, so send our id again for our neighbor */
+	  send_id(i);
 	}
 
     }
