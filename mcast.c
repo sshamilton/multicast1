@@ -562,7 +562,6 @@ int main(int argc, char **argv)
 
           /* End when all have sent their data */
           if (i->packets_to_send == 0 && t->sequence == i->prior_token_aru && t->aru == i->prior_token_aru) {
-             if (i->debug) printf("Nodata: %d, tseq: %d, prior aru: %d\n", t->nodata, t->sequence, i->prior_token_aru);
               allreceived=1;
               for (c=0; c < i->total_machines; c++) {
                 if (t->nodata[c] == 0) {
