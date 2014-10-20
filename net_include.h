@@ -16,7 +16,7 @@
 #define PORT	     10080 /* assigned address */
 #define FCC          600 /* Tuned */
 #define PACKET_SIZE  1200
-#define MAX_MESS_LEN 8192
+#define MAX_MESS_LEN 1500
 #define ARRAY_SIZE   16384
 #define MAX_RTR      250
 

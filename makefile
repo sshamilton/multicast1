@@ -1,6 +1,6 @@
 CC=gcc
 
-#CFLAGS = -ansi -c -Wall -pedantic -g
+#CFLAGS = -ansi -c -Wall -pedantic 
 CFLAGS = -c  -g
 all: mcast start_mcast
 
