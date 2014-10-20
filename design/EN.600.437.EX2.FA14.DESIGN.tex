@@ -62,19 +62,18 @@ int aru_lowered_by;//Flag for lowering the aru
 The token contains all the necessary data needed to maintain the flow of the protocol. It holds the global maximum sequence number so that senders know what the sequence of the most recently sent packet is. The aru on the token helps with necessary protocol semantics. The fcc aids in controlling data flow. The rtr is used by machines to make requests for missing packets. And nodata is the field used to determine the protocol's termination. Other fields are kept in order to optimize the protocol in the way we thought best.
 
 \subsection{Data Packet Design}
-The data structure we plan to implement is a linked list. This list will contain all the sent packets that are greater than min(token.aru, previous token.aru). It will be implemented in a struct as follows:
+The data structure we plan to implement is an array of packets. This list will contain all the sent packets that are greater than min(token.aru, previous token.aru). It will be implemented in a struct as follows:
 \begin{lstlisting}
 struct packet_structure {
 int type;//Type of packet
 int sequence;//Sequence of packet
 int received;//Flag for when globally received
 int machine_index;//Index of packet's sender
-int packet_index;//Index of packet from the sender
 int random_number;//Data
 char data[packet_size];//Contents
 }
 \end{lstlisting}
-The packet structure contains the overall token sequence, whether or not the packet was received, the machine\_index of the sender, the packet\_index of the sender's sequence, the random number, the 1200 additional payload bytes, along with the pointer to the next packet.
+The packet structure contains the overall token sequence, whether or not the packet was received, the machine\_index of the sender, the random number, the 1200 additional payload bytes, along with the pointer to the next packet.
 \subsection{Data Structure}
 This protocol uses one main data structure per machine in order to control the information flow for each machine.
 
@@ -160,11 +159,13 @@ Each machine has a circular array (as in Figure 1). The array holds all of the r
 \subsection{Algorithm}
 We dedicate a section to explaining the details of the protocol. As stated before, the protocal is split into three main parts: startup, message transmission, termination. The general flow of our protocol is shown in Figure 1.
 
-The startup is difficult because we must find a way to successfully establish the ring through which the token is passed (using unicast). Our approach to this is a simple ack routine. Every machine starts out by multicasting its own information so that everyone (ncluding the target) receives the information. In the meantime, every machine also filters through the received packets, looking for its target (the machine with the next sequential ID). Once it successfully receives the information, it sends a message to the target so the target knows to stop. If the machine receives conformation, then it sends a message to machine 1 (who is essentially the controller). Until all machines are done, machine 1 will not create the token therefore the transmission process will not start. Once all acks are received, the process starts with machine 1 sending data (note, once the other machines start receiving data packets, they know for sure that they're in the messaging stage).
+The startup is difficult because we must find a way to successfully establish the ring through which the token is passed (using unicast). Our approach to this is a simple ack routine. Every machine starts out by multicasting its own information so that everyone (ncluding the target) receives the information. In the meantime, every machine also filters through the received packets, looking for its target (the machine with the next sequential ID). Once it successfully receives the information, it sends a message to machine 1 (who is essentially the controller). If a machine does not receive its neighbor, it sends out a request for machine ids.  For machines who already know their neighbor, they will respond to this request with their machine id.  Machine 1 will not create the token until all machines are done, therefore the transmission process will not start until everyone is ready to receive the token. Once all acks are received, the process starts with machine 1 sending data and when complete it sends the token to process 2.
 
 The transmission proceeds as discussed in the introduction essentially covers everything. A note is that flow control is determined by how often various limits are reached. For example, if the rtr ever reaches a state of being completely full, then we lower the fcc meaning that people must send less (giving more opportunitites time for the machines to catch up).
 
-Finally, termination is done by sending a mass of tokens before finaly closing. That way the probability of none of them being received is 0 in a practical setting.
+We also built in an adaptive part of token recovery.  Once our loss level exceeds 3 (it increases upon each token loss), the token will be sent three times between each process.  In practice, we found that adding this adaptation significantly reduced the number of token losses, giving us better finish times overall.  This tuning could be further defined to run over time so that if token loss stops occurring (over a pre-defined number of rounds), the loss level could be reduced and eventually processes will send one token instead of three.  It could also be expanded to send a varying number of tokens depending on the loss detected.  
+
+Finally, termination is done when the array in the token reflects that all processes are done sending data (a 1 for each process), and the token aru, prior token aru, and token sequence are all the same.  This means there is no data left to send, and everyone has received all data sent.  Once this is true, each process sends a mass of tokens (100) before finaly closing. That way the probability of none of them being received is close to 0 in a practical setting.
 
 \section{Results}
 \begin{table}[h]
@@ -197,16 +198,18 @@ Finally, termination is done by sending a mass of tokens before finaly closing. 
 Table 1 and Table 2 are the results of the benchmarks we ran on our protocol. We ran our protocol with simulations of loss at 0\%, 1\%, 2\%, 5\%, 10\%, and 20\%, 5 times each. The average of those times is shown in Table 2.
 
 \begin{figure}[h]
-\includegraphics[width=\linewidth]{EN.600.437.FA14.CHART}
+\includegraphics[width=\linewidth]{Multicast1.png}
 \caption{Graphical interpretation of results}
 \end{figure}
 This is the data of Table 2 displayed as a graph.
 
 \section{Conclusion}
-Our results are rather pleasing. At first glance, the graph looks rather respectable. As loss grows, the program's degredation seems close to linear, which would be ideal. Of course, the goal was to get the slope as flat as possible. And especially for the ring token protocol, this was a big worry. Losing the token takes a huge toll on running time if not properly dealt with because without a token, no data can be sent at all. But this data is evidence that our protocol can fairly gracefully recover from token loss. There is obviously still room for improvement as our transmission time slightly more than doubles when going from 0\% loss to 20\% loss.
+Our results are fairly consistent with our expectation. The graph displays our expectation that as loss grows the length of time to finish increases.  We also see that the program's degredation seems close to linear, which would be ideal. Our goal was was to get the slope as flat as possible. We realized that losing the token takes a huge toll on running time since a timeout will occur before processes can send data. However, this data is evidence that our protocol responded fairly well with token loss. There is still room for improvement as our transmission time slightly more than doubles when comparing 0\% loss to 20\% loss.
 
-Doing some simple math, we can roughly calculate the Mibps of data transmission for our protocol. We send a total of 600,000 packets which is about 5760 Mib. Under 0\% loss it takes around 8 seconds so the transfer rate is around 720 Mib/s which is fairly decent. Clearly this degrades as loss grows -- at 20\%, the transfer rate is around 332 Mib/s which is not great but not abhorrent.
+We send a total of 600,000 packets, and we calculate each packet size to be 1200 bytes + 6 int fields (24 bytes) + 2 bytes UDP header = 1226 bytes.  This is about 5612 Mbits. Under 0\% loss it takes around 8 seconds so the transfer rate is around 701 Mib/s. This degrades as loss grows -- at 20\%, the transfer rate is around 332 Mib/s.
 
 \section{Discussion}
-The token ring protocol we implemented transfers its messages respectfully well. Even under pretty big loss, we manage to get the messages across in a respectful amount of time. Some improvements we could make to our protocol would be to take the next step and do the data transmission after updating/sending the token (advanced token ring protocol). But in general, the main place we can make improvements in is tweaking the data structure size, modifying the retransmission request size allowance, and playing with the method of evolution of the fcc while the protocol runs. These small changes could potentially have a large affect on preventing the protocol from hitting periods of lag, for example, when one process gets too far behind the others.
+The token ring protocol we implemented transfers its messages in agreed order and can handle significant loss. Some improvements we could make to our protocol would be to take the next step and do the data transmission after updating/sending the token (advanced token ring protocol). But in general, the main place we can make improvements in is tweaking the data structure size, modifying the retransmission request size allowance, and playing with the method of evolution of the fcc while the protocol runs. These small changes could potentially have a large affect on preventing the protocol from hitting periods of lag, for example, when one process gets too far behind the others.
+
+We also had an interesting observation that could lead to tuning our protocol for better adaptation.  At 10\% loss, there was a high probability we would hit our limit of too many outstanding packets (our data structure was full), and machines would have to wait another round to send packets.  This did not occur at 20\% loss, which was due to the fact that the RTR limit was reached early on, and the FCC was reduced so that the too many outstanding packet condition was never reached.  Further testing of reducing the FCC when the oustanding packet condition was reached may yield faster times with the 10\% loss rate.  
 \end{document}
